@@ -1,16 +1,16 @@
 # Aspen
 
-This Aspen repository is configured to run without any modifications on Gon (i.e., gon.cc.gatech.edu).
+This Aspen repository is configured to run without any modifications on Asta (i.e., asta.cc.gatech.edu).
 
-As of now Gon's NIC (ens255f1np1) has the following settings
+As of now Asta's NIC (ens255f0np0) has the following settings
 1. NUMA node connected to - 0
-2. DPDK Port - 1
-3. PCI address - 0000:17:00.1
+2. DPDK Port - 0
+3. PCI address - 0000:17:00.0
 4. Directpath support - Yes, only for "qs", i.e., Queue Steering mode
 
 Follow the instructions in `README.orig.md` to compile the repository. As compared to the original Aspen repository, this fork does not include the submodules for the applications and concord, as we do not need them.
 
-Aspen has been tested on Gon machine, booted with Ubuntu 22.04 operating system with [Intel's custom Linux kernel for user interrupt system calls](https://github.com/intel/uintr-linux-kernel.git).
+Aspen has been tested on Asta machine, booted with Ubuntu 22.04 operating system with [Intel's custom Linux kernel for user interrupt system calls](https://github.com/intel/uintr-linux-kernel.git).
 
 ## How to install the Intel's UINTR Linux kernel
 
@@ -54,3 +54,7 @@ sudo update-grub
 
 sudo reboot
 ```
+
+## Runtime and Build config
+
+Aspen introduces new config and runtime config options. Check the example runtime configs `client.config` and `server.config` files. Also check the `build/config` file to select whether we want the aspen runtime to support preemption or not.
