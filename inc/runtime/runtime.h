@@ -38,6 +38,20 @@ static inline float runtime_load(void)
 }
 
 /**
+ * runtime_membw_usage - returns the memory bandwidth usage of the entire host.
+ * The memory bandwidth is reported in the units of MBps.
+ *
+ * NOTE: This includes the memory bandwidth usage of other runtimes as well.
+ *       Probably in future, we can keep track of the L3 cache misses of
+ *       all the runtimes, and using that, we can figure out how much
+ *       bandwidth is being consumed by each individual runtime.
+ */
+static inline double runtime_membw_usage(void)
+{
+	return ACCESS_ONCE(runtime_info->memory.bw_usage);
+}
+
+/**
  * runtime_active_cores - returns the number of currently active cores
  *
  */

@@ -18,6 +18,7 @@
 #include "sched.h"
 #include "ksched.h"
 #include "hw_timestamp.h"
+#include "pcm.h"
 
 /* a bitmap of cores available to be allocated by the scheduler */
 DEFINE_BITMAP(sched_allowed_cores, NCPU);
@@ -693,6 +694,46 @@ rewake:
 }
 
 /**
+ * sched_get_membw_usage - returns the memory bandwidth usage since the last
+ * control cycle. The bandwidth is in MBps.
+ */
+
+static double sched_get_membw_usage(uint64_t now_time) {
+
+	static bool init = false;
+	static uint32_t num_mc = 0;
+	static uint32_t last_bytes = 0;
+	static uint64_t last_time = 0;
+
+	/* Get the number of memory channels only once */
+	if (!init) {
+		num_mc = pcm_iok_get_active_channel_count();
+		init = true;
+	}
+
+	/* Get the number of bytes accessed till now */
+	uint32_t now_bytes = pcm_iok_get_cas_count(0) * 64 * num_mc;
+
+	/* Get the memory bandwidth */
+	double membw = (double)(now_bytes - last_bytes) / (double)(now_time - last_time);
+
+	/* Save the info for this control cycle */
+	last_bytes = now_bytes;
+	last_time = now_time;
+
+	return membw;
+}
+
+/**
+ * sched_report_membw_usage - reports the current memory bandwidth usage
+ * to the runtime.
+ */
+static void sched_report_membw_usage(struct proc *p, double membw) {
+	struct memory_info *info = &p->runtime_info->memory;
+	ACCESS_ONCE(info->bw_usage) = membw;
+}
+
+/**
  * sched_poll - advance the scheduler during each poll loop iteration
  */
 void sched_poll(void)
@@ -703,6 +744,7 @@ void sched_poll(void)
 	uint64_t now;
 	int i, core, idle_cnt = 0;
 	struct proc *p;
+	double membw;
 
 	/*
 	 * slow pass --- runs every IOKERNEL_POLL_INTERVAL
@@ -718,10 +760,16 @@ void sched_poll(void)
 		/* retrieve current network device tick */
 		hw_timestamp_update();
 
+		/* Get the current memory bandwidth usage */
+		membw = sched_get_membw_usage(now);
+
 		last_time = now;
 		for (i = 0; i < dp.nr_clients; i++) {
 			p = dp.clients[i];
 			sched_measure_delay(p);
+
+			/* Report the memory bandwidth usage to the runtime */
+			sched_report_membw_usage(p, membw);
 		}
 	} else if (!cfg.noidlefastwake) {
 		/* check if any idle directpath runtimes have received I/Os */
@@ -969,6 +1017,10 @@ int sched_init(void)
 	/* generate polling arrays */
 	bitmap_for_each_set(sched_allowed_cores, NCPU, i)
 		sched_cores_tbl[sched_cores_nr++] = i;
+
+	/* initialize the PCM module */
+	log_info("sched: initializing PCM on NUMA node %d", managed_numa_node);
+	pcm_iok_init(managed_numa_node);
 
 	return 0;
 }

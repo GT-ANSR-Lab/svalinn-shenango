@@ -61,8 +61,13 @@ struct congestion_info {
 	uint64_t		delay_us;
 };
 
+struct memory_info {
+	double bw_usage;
+};
+
 struct runtime_info {
 	struct congestion_info congestion;
+	struct memory_info memory;
 	uint64_t directpath_strides_posted;
 	atomic64_t directpath_strides_consumed;
 };

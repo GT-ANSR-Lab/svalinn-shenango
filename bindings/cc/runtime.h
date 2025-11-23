@@ -23,6 +23,9 @@ inline uint64_t RuntimeQueueUS() { return runtime_queue_us(); }
 // Gets an estimate of the instantanious load as measured by the IOKernel.
 inline float RuntimeLoad() { return runtime_load(); }
 
+// Gets the current memory bandwidth usage of the host.
+inline double RuntimeMembwUsage() { return runtime_membw_usage(); }
+
 // Gets the current number of active cores
 inline unsigned int RuntimeActiveCores() { return runtime_active_cores(); }
 
