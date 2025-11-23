@@ -745,6 +745,7 @@ void sched_poll(void)
 	int i, core, idle_cnt = 0;
 	struct proc *p;
 	double membw;
+	bool update_membw = false;
 
 	/*
 	 * slow pass --- runs every IOKERNEL_POLL_INTERVAL
@@ -761,7 +762,11 @@ void sched_poll(void)
 		hw_timestamp_update();
 
 		/* Get the current memory bandwidth usage */
-		membw = sched_get_membw_usage(now);
+		if (IOKERNEL_MEMBW_UPDATE_FREQ &&
+		    (stats[SCHED_RUN] % IOKERNEL_MEMBW_UPDATE_FREQ == 0)) {
+			membw = sched_get_membw_usage(now);
+			update_membw = true;
+		}
 
 		last_time = now;
 		for (i = 0; i < dp.nr_clients; i++) {
@@ -769,7 +774,9 @@ void sched_poll(void)
 			sched_measure_delay(p);
 
 			/* Report the memory bandwidth usage to the runtime */
-			sched_report_membw_usage(p, membw);
+			if (update_membw) {
+				sched_report_membw_usage(p, membw);
+			}
 		}
 	} else if (!cfg.noidlefastwake) {
 		/* check if any idle directpath runtimes have received I/Os */

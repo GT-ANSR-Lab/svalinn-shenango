@@ -51,6 +51,11 @@ extern uint32_t nr_vfio_prealloc;
 #define IOKERNEL_RX_BURST_SIZE		64
 #define IOKERNEL_CONTROL_BURST_SIZE	4
 #define IOKERNEL_POLL_INTERVAL		10
+/* The number of IOKernel poll cycles in which the scheduler should update
+ * the memory. Setting this to zero, will disable memory bandwidth monitoring
+ * in the IOKernel.
+ */
+#define IOKERNEL_MEMBW_UPDATE_FREQ	5
 
 
 /*
