@@ -185,7 +185,7 @@ static float ias_measure_bw(void)
 	barrier();
 	tsc = rdtsc();
 	barrier();
-	cur_cas = pcm_caladan_get_cas_count(0);
+	cur_cas = pcm_iok_get_cas_count(0);
 	bw_estimate = (float)(cur_cas - last_cas) / (float)(tsc - last_tsc);
 	last_cas = cur_cas;
 	last_tsc = tsc;
@@ -279,12 +279,12 @@ int ias_bw_init(void)
 	}
 
 
-	ret = pcm_caladan_init(0);
+	ret = pcm_iok_init(0);
 	if (ret)
 		return ret;
 
 	/* We monitor 1 channel, so multiply measurements by nr_channels to estimate real bw */
-	nr_channels = pcm_caladan_get_active_channel_count();
+	nr_channels = pcm_iok_get_active_channel_count();
 	if (nr_channels == 0)
 		return -EINVAL;
 

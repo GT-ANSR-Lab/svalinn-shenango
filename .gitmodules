@@ -12,7 +12,7 @@
 	url = https://github.com/google/snappy.git
 [submodule "deps/pcm"]
 	path = deps/pcm
-	url = https://github.com/opcm/pcm.git
+	url = https://github.com/intel/pcm.git
 [submodule "aspen-go/go"]
 	path = aspen-go/go
 	url = https://github.com/PLSysSec/go-preempt.git
