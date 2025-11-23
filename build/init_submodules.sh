@@ -77,7 +77,7 @@ cd ..
 
 echo building PCM
 cd deps/pcm
-rm -f src/pcm-caladan.cpp
+rm -f src/pcm-iok.cpp
 patch -p1 -N < ../../build/pcm.patch
 mkdir -p build
 cd build
