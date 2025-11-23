@@ -177,3 +177,5 @@ extern struct srpc_ops sdg_ops;
 extern struct crpc_ops cdg_ops;
 extern struct srpc_ops snc_ops;
 extern struct crpc_ops cnc_ops;
+extern struct srpc_ops spcc_ops;
+extern struct crpc_ops cpcc_ops;
