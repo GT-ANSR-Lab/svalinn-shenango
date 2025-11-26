@@ -768,6 +768,7 @@ static void srpc_update_credit_pool()
 
         /* Set the start time for the monitor interval */
         atomic64_write(&srpc_pcc_start_ts[stat_idx], microtime());
+        atomic64_write(&srpc_pcc_end_ts[stat_idx], microtime());
 
         /* Set the stat index for the workers to use */
         srpc_pcc_stat_idx = stat_idx;
@@ -849,6 +850,15 @@ static void srpc_update_credit_pool()
                     goto inconclusive;
                 }
 
+                /* If we did not receive any packets in either increase or
+                 * decrease phase then probably we are congested, so reduce
+                 * the rate.
+                 */
+                if (!in_cnts[i] || !in_cnts[j]) {
+                    decr_better_cnt = SPCC_REPS * SPCC_REPS;
+                    goto conclusive;
+                }
+
                 double incr_util = utils[i];
                 double decr_util = utils[j];
                 if (incr_util > decr_util) {
@@ -861,6 +871,7 @@ static void srpc_update_credit_pool()
             }
         }
 
+    conclusive:
         if (incr_better_cnt == SPCC_REPS * SPCC_REPS) {
             /* If rate increase was consistently better */
 
@@ -1001,6 +1012,7 @@ static void srpc_update_credit_pool()
 
         /* Set the start time for the monitor interval */
         atomic64_write(&srpc_pcc_start_ts[stat_idx], microtime());
+        atomic64_write(&srpc_pcc_end_ts[stat_idx], microtime());
 
         /* Set the stat index for the workers to use */
         srpc_pcc_stat_idx = stat_idx;
