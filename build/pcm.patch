@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1bdc506..0c75cfd 100644
+index 1bdc506..db4f63b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -67,7 +67,7 @@ if(UNIX)  # APPLE, LINUX, FREE_BSD
@@ -11,6 +11,17 @@ index 1bdc506..0c75cfd 100644
         if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
           set (PCM_COMMON_FLAGS "${PCM_COMMON_FLAGS} -Wl,-z,now")
         endif()
+@@ -182,8 +182,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+ 
+ add_subdirectory(src)
+-add_subdirectory(examples)
+-add_subdirectory(tests)
++# add_subdirectory(examples)
++# add_subdirectory(tests)
+ 
+ message(STATUS "Install directory: ${CMAKE_INSTALL_PREFIX}")
+ 
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index 79458f0..2c3cacb 100644
 --- a/src/CMakeLists.txt
@@ -25,9 +36,8 @@ index 79458f0..2c3cacb 100644
  if (NOT APPLE)
    file(GLOB UNIX_SOURCES resctrl.cpp)
 diff --git a/src/pcm-iok.cpp b/src/pcm-iok.cpp
-new file mode 100644
-index 0000000..3529355
---- /dev/null
+index e69de29..2f6d9bb 100644
+--- a/src/pcm-iok.cpp
 +++ b/src/pcm-iok.cpp
 @@ -0,0 +1,40 @@
 +#include "cpucounters.h"
@@ -36,9 +46,9 @@ index 0000000..3529355
 +
 +extern "C" {
 +
-+    bool init = false;
-+    PCM *p_pcm;
-+    ServerUncorePMUs *p_unc;
++	bool init = false;
++	PCM *p_pcm;
++	ServerUncorePMUs *p_unc;
 +
 +	uint32_t pcm_iok_get_cas_count(uint32 channel)
 +	{
@@ -59,14 +69,14 @@ index 0000000..3529355
 +
 +	int pcm_iok_init(int socket)
 +	{
-+        if (init) {
-+            return 0;
-+        }
++		if (init) {
++			return 0;
++		}
 +
 +		p_pcm = PCM::getInstance();
-+        p_unc = new pcm::ServerUncorePMUs(socket, p_pcm);
-+        p_unc->program();
-+        init = true;
++		p_unc = new pcm::ServerUncorePMUs(socket, p_pcm);
++		p_unc->program();
++		init = true;
 +		return 0;
 +	}
 +}
