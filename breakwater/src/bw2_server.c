@@ -208,6 +208,7 @@ static atomic64_t srpc_cm_drop_cnt;
 static atomic64_t srpc_cm_last_in;
 static atomic64_t srpc_cm_last_out;
 static uint64_t srpc_cm_last_update;
+static bool srpc_cm_reset_stat;
 static bool srpc_cm_req_dropped;
 
 #if SBW_TS_OUT
@@ -668,12 +669,20 @@ static void srpc_update_credit_pool()
 		return;
 	}
 
+	if (!srpc_cm_reset_stat) {
+		atomic64_write(&srpc_cm_in_cnt, 0);
+		atomic64_write(&srpc_cm_out_cnt, 0);
+		atomic64_write(&srpc_cm_drop_cnt, 0);
+		srpc_cm_reset_stat = true;
+	}
+
 	if (tdiff < SRPC_CM_UPDATE_INTERVAL) {
 		spin_unlock_np(&srpc_cm_lock);
 		return;
 	}
 
 	srpc_cm_last_update = now;
+	srpc_cm_reset_stat = false;
 	spin_unlock_np(&srpc_cm_lock);
 
 	// TODO: support multiple session type
@@ -690,7 +699,7 @@ static void srpc_update_credit_pool()
     int64_t in_delta = ABS(in_cnt - last_in_cnt);
     int64_t out_delta = ABS(out_cnt - last_out_cnt);
 
-    double curr_tput = (double)(out_cnt) / tdiff;
+    /* double curr_tput = (double)(out_cnt) / tdiff; */
 
     if ((in_delta * out_delta) > 0) {
         double slope = (double)out_delta / (double)in_delta;
@@ -1271,6 +1280,7 @@ static void srpc_listener(void *arg)
 	atomic64_write(&srpc_cm_last_in, 0);
 	atomic64_write(&srpc_cm_last_out, 0);
 	srpc_cm_last_update = microtime();
+	srpc_cm_reset_stat = false;
 
 	laddr.ip = 0;
 	laddr.port = SRPC_PORT;
