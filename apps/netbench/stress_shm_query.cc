@@ -57,7 +57,7 @@ int64_t ShmMonitor::Poll(int64_t now) {
 int64_t MemBwMonitor::Poll(int64_t now) {
   if (now < next_us) return next_us;
 
-  unsigned int cur = pcm_caladan_get_cas_count(0);
+  unsigned int cur = pcm_iok_get_cas_count(0);
   printf("mem %.2f %lu\n", (double)(cur - last_read) * mbps_mult, rdtsc());
   last_read = cur;
 
@@ -66,8 +66,8 @@ int64_t MemBwMonitor::Poll(int64_t now) {
 }
 
 int MemBwMonitor::Init(uint64_t freq_us) {
-  pcm_caladan_init(0);
-  uint32_t chan = pcm_caladan_get_active_channel_count();
+  pcm_iok_init(0);
+  uint32_t chan = pcm_iok_get_active_channel_count();
   frequency_us = next_us = freq_us;
   mbps_mult = (double)chan * (double)CACHE_LINE_SIZE / (double)freq_us;
   return 0;
