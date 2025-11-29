@@ -55,7 +55,7 @@ extern uint32_t nr_vfio_prealloc;
  * the memory. Setting this to zero, will disable memory bandwidth monitoring
  * in the IOKernel.
  */
-#define IOKERNEL_MEMBW_UPDATE_FREQ	2
+#define IOKERNEL_MEMBW_UPDATE_FREQ	0
 
 
 /*
