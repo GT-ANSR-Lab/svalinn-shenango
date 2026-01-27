@@ -23,7 +23,7 @@
 #include "pcc_config.h"
 
 /* Enable PCC debug logs */
-#define SPCC_CTL_DEBUG      1
+#define SPCC_CTL_DEBUG      0
 
 /* time-series output */
 #define SPCC_TS_OUT         false
@@ -667,6 +667,7 @@ static void srpc_update_credit_pool()
 {
     uint64_t now;
     double curr_cp;
+    double delta_cp;
     int new_cp;
     int credit_used;
     int credit_unused;
@@ -708,7 +709,7 @@ static void srpc_update_credit_pool()
         /* Update the rate */
         curr_cp = srpc_pcc_curr_cp;
         dir = srpc_pcc_dirs[srpc_pcc_dirs_idx];
-        new_cp = (1.0 + dir * srpc_pcc_epsilon) * curr_cp;
+        new_cp = curr_cp + dir * srpc_pcc_epsilon;
         new_cp = MAX(new_cp, runtime_max_cores());
         new_cp = MIN(new_cp, atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP);
         atomic_write(&srpc_credit_pool, new_cp);
@@ -877,7 +878,7 @@ static void srpc_update_credit_pool()
 
             /* Update the rate */
             curr_cp = srpc_pcc_curr_cp;
-            curr_cp = (1.0 + srpc_pcc_epsilon) * curr_cp;
+            curr_cp = curr_cp + srpc_pcc_epsilon;
             curr_cp = MAX(curr_cp, (double)runtime_max_cores());
             curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
             srpc_pcc_curr_cp = curr_cp;
@@ -886,6 +887,20 @@ static void srpc_update_credit_pool()
 
             /* Wake up drained sessions */
             do_wakeup = true;
+
+#if SPCC_RATE_ADJUSTING_STATE_ENABLED == 0
+            /* Move back to the decision making state */
+            srpc_pcc_dir = SPCC_DIR_BASE;
+            srpc_pcc_n = 0;
+            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
+            srpc_pcc_dirs_shuffle();
+            srpc_pcc_dirs_idx = 0;
+            srpc_pcc_curr_incr_rep_cnt = 0;
+            srpc_pcc_curr_decr_rep_cnt = 0;
+            srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
+            srpc_pcc_next_update = 0; /* move immediately */
+#else
+            /* Move to the rate adjusting state */
 
             /* Set the direction */
             srpc_pcc_dir = SPCC_DIR_INCR;
@@ -902,6 +917,8 @@ static void srpc_update_credit_pool()
             /* Update the state */
             srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE;
             srpc_pcc_next_update = 0; /* move immediately */
+#endif
+
 
 #if SPCC_CTL_DEBUG == 1
             printf("[%ld] - DECISION_MAKING_END -"
@@ -915,7 +932,7 @@ static void srpc_update_credit_pool()
 
             /* Update the rate */
             curr_cp = srpc_pcc_curr_cp;
-            curr_cp = (1.0 - srpc_pcc_epsilon) * curr_cp;
+            curr_cp = curr_cp - srpc_pcc_epsilon;
             curr_cp = MAX(curr_cp, (double)runtime_max_cores());
             curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
             srpc_pcc_curr_cp = curr_cp;
@@ -924,6 +941,21 @@ static void srpc_update_credit_pool()
 
             /* Wake up drained sessions */
             do_wakeup = true;
+
+#if SPCC_RATE_ADJUSTING_STATE_ENABLED == 0
+            /* Move back to the decision making state */
+            srpc_pcc_dir = SPCC_DIR_BASE;
+            srpc_pcc_n = 0;
+            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
+            srpc_pcc_dirs_shuffle();
+            srpc_pcc_dirs_idx = 0;
+            srpc_pcc_curr_incr_rep_cnt = 0;
+            srpc_pcc_curr_decr_rep_cnt = 0;
+            srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
+            srpc_pcc_next_update = 0; /* move immediately */
+
+#else
+            /* Move to the rate adjusting state */
 
             /* Set the direction */
             srpc_pcc_dir = SPCC_DIR_DECR;
@@ -940,6 +972,8 @@ static void srpc_update_credit_pool()
             /* Update the state */
             srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE;
             srpc_pcc_next_update = 0; /* move immediately */
+
+#endif
 
 #if SPCC_CTL_DEBUG == 1
             printf("[%ld] - DECISION_MAKING_END -"
@@ -976,7 +1010,9 @@ static void srpc_update_credit_pool()
 
         /* Update the rate in the same direction */
         curr_cp = srpc_pcc_curr_cp;
-        new_cp = (1.0 + (double)srpc_pcc_dir * (double)srpc_pcc_n * SPCC_EPSILON_MIN) * curr_cp;
+        delta_cp = (double)srpc_pcc_n * SPCC_EPSILON_MIN;
+        delta_cp = MIN(delta_cp, SPCC_EPSILON_MAX);
+        new_cp = curr_cp + srpc_pcc_dir * delta_cp;
         new_cp = MAX(new_cp, runtime_max_cores());
         new_cp = MIN(new_cp, atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP);
         atomic_write(&srpc_credit_pool, new_cp);
@@ -1116,7 +1152,9 @@ static void srpc_update_credit_pool()
         if (utils[stat_idx] >= srpc_pcc_prev_util) {
             /* Set the rate in the same direction */
             curr_cp = srpc_pcc_curr_cp;
-            curr_cp = (1.0 + (double)srpc_pcc_dir * (double)srpc_pcc_n * SPCC_EPSILON_MIN) * curr_cp;
+            delta_cp = (double)srpc_pcc_n * SPCC_EPSILON_MIN;
+            delta_cp = MIN(delta_cp, SPCC_EPSILON_MAX);
+            curr_cp = curr_cp + srpc_pcc_dir * delta_cp;
             curr_cp = MAX(curr_cp, (double)runtime_max_cores());
             curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
             srpc_pcc_curr_cp = curr_cp;
