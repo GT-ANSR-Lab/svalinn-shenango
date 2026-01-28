@@ -1,0 +1,15 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1bdc506..5e78413 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -182,8 +182,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+ 
+ add_subdirectory(src)
+-add_subdirectory(examples)
+-add_subdirectory(tests)
++# add_subdirectory(examples)
++# add_subdirectory(tests)
+ 
+ message(STATUS "Install directory: ${CMAKE_INSTALL_PREFIX}")
+ 

@@ -17,3 +17,9 @@
 	path = aspen-go/go
 	url = https://github.com/PLSysSec/go-preempt.git
 	branch = net-optimized
+[submodule "m-semaphore/deps/pcm"]
+	path = m-semaphore/deps/pcm
+	url = https://github.com/intel/pcm.git
+[submodule "m-semaphore/deps/benchmark"]
+	path = m-semaphore/deps/benchmark
+	url = https://github.com/google/benchmark.git
