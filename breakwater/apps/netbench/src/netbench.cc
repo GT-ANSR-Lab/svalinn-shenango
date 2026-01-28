@@ -21,6 +21,7 @@ extern "C" {
 #include "synthetic_worker.h"
 #include "loadbalancer.h"
 #include "fanouter.h"
+#include "m_semaphore.hpp"
 
 #include <atomic>
 #include <algorithm>
@@ -68,6 +69,8 @@ uint64_t mem_bound_work_itr;
 int cpu_bound_req_pcnt;
 // RPC service level objective (in us)
 int slo;
+// Whether to use memory semaphore
+bool use_msem;
 
 std::ofstream json_out;
 std::ofstream csv_out;
@@ -76,8 +79,8 @@ int total_agents = 1;
 // number of iterations required for 1us on target server
 constexpr uint64_t kIterationsPerUS = 69;  // 83
 // Total duration of the experiment in us
-constexpr uint64_t kWarmUpTime = 4000000;
-constexpr uint64_t kExperimentTime = 8000000;
+constexpr uint64_t kWarmUpTime = 8000000;
+constexpr uint64_t kExperimentTime = 16000000;
 // RTT
 constexpr uint64_t kRTT = 10;
 constexpr uint64_t kNumDupClient = 32;
@@ -85,8 +88,42 @@ constexpr uint64_t kNumDupClient = 32;
 std::vector<double> offered_loads;
 double offered_load;
 
+// Load shift load arrays
+int do_load_shift = 0;
+struct load_shift_test {
+  double rate;
+  uint64_t duration;
+  uint64_t mem_bound_work_itr;
+};
+
+std::vector<load_shift_test> load_shift_tests = {
+  // This is for warmup
+  {.rate = 1000000,
+   .duration = kWarmUpTime,
+   .mem_bound_work_itr = 0},
+
+  // Actual rates, we want to test
+  {.rate = 1000000,
+   .duration = 2000000,
+   .mem_bound_work_itr = 10},
+  {.rate = 1000000,
+   .duration = 2000000,
+   .mem_bound_work_itr = 100},
+  {.rate = 1000000,
+   .duration = 2000000,
+   .mem_bound_work_itr = 10},
+  {.rate = 80000,
+   .duration = 2000000,
+   .mem_bound_work_itr = 0},
+  {.rate = 40000,
+   .duration = 2000000,
+   .mem_bound_work_itr = 0},
+ };
+
+
 static SyntheticWorker *cpu_bound_workers[NCPU];
 static SyntheticWorker *mem_bound_workers[NCPU];
+static MemSemaphore *msem = nullptr;
 
 struct payload {
   bool is_cpu_bound_req;
@@ -218,6 +255,7 @@ class NetBarrier {
       BUG_ON(c->WriteFull(&cpu_bound_req_pcnt, sizeof(cpu_bound_req_pcnt)) <= 0);
       BUG_ON(c->WriteFull(&slo, sizeof(slo)) <= 0);
       BUG_ON(c->WriteFull(&offered_load, sizeof(offered_load)) <= 0);
+      BUG_ON(c->WriteFull(&do_load_shift, sizeof(do_load_shift)) <= 0);
       BUG_ON(c->WriteFull(&num_servers, sizeof(num_servers)) <= 0);
       BUG_ON(c->WriteFull(raddr, sizeof(netaddr) * num_servers) <= 0);
       BUG_ON(c->WriteFull(nconn, sizeof(int) * num_servers) <= 0);
@@ -241,6 +279,7 @@ class NetBarrier {
     BUG_ON(c->ReadFull(&cpu_bound_req_pcnt, sizeof(cpu_bound_req_pcnt)) <= 0);
     BUG_ON(c->ReadFull(&slo, sizeof(slo)) <= 0);
     BUG_ON(c->ReadFull(&offered_load, sizeof(offered_load)) <= 0);
+    BUG_ON(c->ReadFull(&do_load_shift, sizeof(do_load_shift)) <= 0);
     BUG_ON(c->ReadFull(&num_servers, sizeof(num_servers)) <= 0);
     BUG_ON(c->ReadFull(raddr, sizeof(netaddr) * num_servers) <= 0);
     BUG_ON(c->ReadFull(nconn, sizeof(int) * num_servers) <= 0);
@@ -444,7 +483,7 @@ sstat_raw ReadRPCSStat() {
   if (ret != static_cast<ssize_t>(sizeof(u)))
     panic("sstat response failed, ret = %ld", ret);
   return sstat_raw{u.total, u.busy, u.num_cores, u.max_cores, u.cupdate_rx,
-                   u.ecredit_tx, u.credit_tx, u.req_rx, u.req_dropped, u.resp_tx};
+      u.ecredit_tx, u.credit_tx, u.req_rx, u.req_dropped, u.resp_tx};
 }
 
 shstat_raw ReadShenangoStat() {
@@ -518,9 +557,20 @@ void RpcServer(struct srpc_ctx *ctx) {
   uint64_t start = microtime();
   assert(workn > 0);
   if (in->is_cpu_bound_req) {
-      cpu_bound_workers[core_id]->Work(workn);
+    cpu_bound_workers[core_id]->Work(workn);
   } else {
+    if (!use_msem) {
       mem_bound_workers[core_id]->Work(workn);
+    } else {
+      assert(msem != nullptr);
+      if (msem->TryWait()) {
+        mem_bound_workers[core_id]->Work(workn);
+        msem->Post();
+      } else {
+        ctx->drop = true;
+        return;
+      }
+    }
   }
   uint64_t end = microtime();
 
@@ -534,6 +584,53 @@ void RpcServer(struct srpc_ctx *ctx) {
   out->work_us = hton64(end - start);
 }
 
+#ifdef PROFILE_ST
+
+#define NUM_ITRS (10000)
+#define CPU_WORK_ITRS (4000)
+#define MEM_WORK_ITRS (78)
+
+void NetbenchProfileServiceTimes() {
+    std::vector<uint64_t> times(NUM_ITRS);
+    uint64_t start;
+    uint64_t end;
+
+    for (int i = 0; i < NUM_ITRS; ++i) {
+        start = microtime();
+        cpu_bound_workers[0]->Work(CPU_WORK_ITRS);
+        end = microtime();
+        times[i] = end - start;
+    }
+
+    // Print the times
+    std::sort(times.begin(), times.end());
+    printf("CPU-bound operation times:\n");
+    printf("\tmin:%ld us\n", times[0]);
+    printf("\tp50:%ld us\n", times[NUM_ITRS * 0.50]);
+    printf("\tp90:%ld us\n", times[NUM_ITRS * 0.90]);
+    printf("\tp99:%ld us\n", times[NUM_ITRS * 0.99]);
+    printf("\tmax:%ld us\n", times[NUM_ITRS - 1]);
+
+
+    for (int i = 0; i < NUM_ITRS; ++i) {
+        start = microtime();
+        mem_bound_workers[0]->Work(MEM_WORK_ITRS);
+        end = microtime();
+        times[i] = end - start;
+    }
+
+    // Print the times
+    std::sort(times.begin(), times.end());
+    printf("Memory bandwidth-bound operation times:\n");
+    printf("\tmin:%ld us\n", times[0]);
+    printf("\tp50:%ld us\n", times[NUM_ITRS * 0.50]);
+    printf("\tp90:%ld us\n", times[NUM_ITRS * 0.90]);
+    printf("\tp99:%ld us\n", times[NUM_ITRS * 0.99]);
+    printf("\tmax:%ld us\n", times[NUM_ITRS - 1]);
+
+}
+#endif
+
 void ServerHandler(void *arg) {
   rt::Thread([] { RPCSStatServer(); }).Detach();
   int num_cores = rt::RuntimeMaxCores();
@@ -544,6 +641,14 @@ void ServerHandler(void *arg) {
     mem_bound_workers[i] = SyntheticWorkerFactory("membwantagonist:32768:0:0");
     if (mem_bound_workers[i] == nullptr) panic("cannot create worker");
   }
+
+#ifdef PROFILE_ST
+  // Profile the request execution times
+  NetbenchProfileServiceTimes();
+#endif
+
+  // Create the memory semaphore object
+  msem = MemSemaphore::GetInstance();
 
   int ret = rpc::RpcServerEnable(RpcServer);
   if (ret) panic("couldn't enable RPC server");
@@ -733,7 +838,8 @@ void SEQHandler(void *arg) {
 
 template <class Arrival>
 std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
-                                    double last_us, bool is_monster) {
+                                    double last_us, bool is_monster,
+                                    uint64_t cur_mem_bound_work_itr) {
   std::vector<work_unit> w;
   bool is_cpu_bound_req;
   uint64_t work_itr;
@@ -747,7 +853,7 @@ std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
         work_itr = cpu_bound_work_itr;
     } else {
         is_cpu_bound_req = false;
-        work_itr = mem_bound_work_itr;
+        work_itr = cur_mem_bound_work_itr;
     }
 
     w.emplace_back(work_unit{cur_us, 0, is_cpu_bound_req, work_itr,
@@ -1116,16 +1222,10 @@ void PrintHeader(std::ostream &os) {
      << "p999,"
      << "p9999,"
      << "max,"
-     << "cpu_bound_st_p50,"
-     << "cpu_bound_st_p90,"
-     << "cpu_bound_st_p99,"
-     << "mem_bound_st_p50,"
-     << "mem_bound_st_p90,"
-     << "mem_bound_st_p99,"
-     << "reject_min"
-     << "reject_mean"
-     << "reject_p50"
-     << "reject_p99"
+     << "reject_min,"
+     << "reject_mean,"
+     << "reject_p50,"
+     << "reject_p99,"
      << "p1_credit,"
      << "mean_credit,"
      << "p99_credit,"
@@ -1208,16 +1308,10 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   double cpu_bound_req_p50 = 0;
   double cpu_bound_req_p90 = 0;
   double cpu_bound_req_p99 = 0;
-  double cpu_bound_st_p50 = 0;
-  double cpu_bound_st_p90 = 0;
-  double cpu_bound_st_p99 = 0;
   double mem_bound_work_count = 0;
   double mem_bound_req_p50 = 0;
   double mem_bound_req_p90 = 0;
   double mem_bound_req_p99 = 0;
-  double mem_bound_st_p50 = 0;
-  double mem_bound_st_p90 = 0;
-  double mem_bound_st_p99 = 0;
 
   std::copy_if(w.begin(), w.end(), std::back_inserter(cpu_bound_work), [](work_unit &s) {
           return s.success && s.is_cpu_bound_req;
@@ -1232,16 +1326,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
       cpu_bound_req_p90 = cpu_bound_work[cpu_bound_work_count * 0.90].duration_us;
       cpu_bound_req_p99 = cpu_bound_work[cpu_bound_work_count * 0.99].duration_us;
   }
-  std::sort(cpu_bound_work.begin(), cpu_bound_work.end(),
-            [](const work_unit &s1, const work_unit &s2) {
-                return s1.work_us < s2.work_us;
-            });
-  cpu_bound_work_count = static_cast<double>(cpu_bound_work.size());
-  if (cpu_bound_work_count) {
-      cpu_bound_st_p50 = cpu_bound_work[cpu_bound_work_count * 0.50].work_us;
-      cpu_bound_st_p90 = cpu_bound_work[cpu_bound_work_count * 0.90].work_us;
-      cpu_bound_st_p99 = cpu_bound_work[cpu_bound_work_count * 0.99].work_us;
-  }
 
   std::copy_if(w.begin(), w.end(), std::back_inserter(mem_bound_work), [](work_unit &s) {
           return s.success && !s.is_cpu_bound_req;
@@ -1255,16 +1339,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
       mem_bound_req_p50 = mem_bound_work[mem_bound_work_count * 0.50].duration_us;
       mem_bound_req_p90 = mem_bound_work[mem_bound_work_count * 0.90].duration_us;
       mem_bound_req_p99 = mem_bound_work[mem_bound_work_count * 0.99].duration_us;
-  }
-  std::sort(mem_bound_work.begin(), mem_bound_work.end(),
-            [](const work_unit &s1, const work_unit &s2) {
-                return s1.work_us < s2.work_us;
-            });
-  mem_bound_work_count = static_cast<double>(mem_bound_work.size());
-  if (mem_bound_work_count) {
-      mem_bound_st_p50 = mem_bound_work[mem_bound_work_count * 0.50].work_us;
-      mem_bound_st_p90 = mem_bound_work[mem_bound_work_count * 0.90].work_us;
-      mem_bound_st_p99 = mem_bound_work[mem_bound_work_count * 0.99].work_us;
   }
 
   std::sort(w.begin(), w.end(), [](const work_unit &s1, const work_unit &s2) {
@@ -1312,6 +1386,27 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   double mean_stime = sum_stime / w.size();
   double p99_stime = w[count * 0.99].server_time;
 
+  // Save the work units in a file
+  if (do_load_shift) {
+    std::sort(w.begin(), w.end(), [](const work_unit &s1, const work_unit &s2) {
+      return s1.start_us < s2.start_us; // is this correct, or should it be start+duration??
+    });
+    std::ofstream all_tasks_file;
+    all_tasks_file.open ("all_tasks.csv");
+    all_tasks_file << "start_us,is_cpu_bound,work_us,duration_us,tsc,server_queue,server_time" << std::endl;
+    all_tasks_file << std::setprecision(8) << std::fixed;
+    for (unsigned int i = 0; i < w.size(); ++i) {
+      all_tasks_file << w[i].start_us << ","
+                     << w[i].is_cpu_bound_req << ","
+                     << w[i].work_us << ","
+                     << w[i].duration_us << ","
+                     << w[i].tsc << ","
+                     << w[i].server_queue << ","
+                     << w[i].server_time << std::endl;
+    }
+    all_tasks_file.close();
+  }
+
   std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	    << cs->offered_rps << "," << cs->rps << ","
         << cs->cpu_bound_req_rps << "," << cs->mem_bound_req_rps << ","
@@ -1321,8 +1416,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
         << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
         << p99 << "," << cpu_bound_req_p99 << "," << mem_bound_req_p99 << ","
 	    << p999 << "," << p9999 << "," << max << ","
-        << cpu_bound_st_p50 << "," << cpu_bound_st_p90 << "," << cpu_bound_st_p99 << ","
-        << mem_bound_st_p50 << "," << mem_bound_st_p90 << "," << mem_bound_st_p99 << ","
 	    << reject_min << "," << reject_mean << "," << reject_p50 << ","
 	    << reject_p99 << ","
 	    << p1_credit << "," << mean_credit << "," << p99_credit << ","
@@ -1348,8 +1441,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
       << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
       << p99 << "," << cpu_bound_req_p99 << "," << mem_bound_req_p99 << ","
 	  << p999 << "," << p9999 << "," << max << ","
-      << cpu_bound_st_p50 << "," << cpu_bound_st_p90 << "," << cpu_bound_st_p99 << ","
-      << mem_bound_st_p50 << "," << mem_bound_st_p90 << "," << mem_bound_st_p99 << ","
 	  << reject_min << "," << reject_mean << "," << reject_p50 << ","
 	  << reject_p99 << ","
 	  << p1_credit << "," << mean_credit << "," << p99_credit << ","
@@ -1389,12 +1480,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
            << "\"p999\":" << p999 << ","
            << "\"p9999\":" << p9999 << ","
            << "\"max\":" << max << ","
-           << "\"cpu_bound_st_p50\":" << cpu_bound_st_p50 << ","
-           << "\"cpu_bound_st_p90\":" << cpu_bound_st_p90 << ","
-           << "\"cpu_bound_st_p99\":" << cpu_bound_st_p99 << ","
-           << "\"mem_bound_st_p50\":" << mem_bound_st_p50 << ","
-           << "\"mem_bound_st_p90\":" << mem_bound_st_p90 << ","
-           << "\"mem_bound_st_p99\":" << mem_bound_st_p99 << ","
            << "\"reject_min\":" << reject_min << ","
            << "\"reject_mean\":" << reject_mean << ","
            << "\"reject_p50\":" << reject_p50 << ","
@@ -1431,6 +1516,69 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
            << std::flush;
 }
 
+void LoadShiftExperiment(int threads) {
+  struct sstat ss;
+  struct cstat_raw csr;
+  struct cstat cs;
+  double elapsed;
+
+  memset(&csr, 0, sizeof(csr));
+
+  std::vector<work_unit> w = RunExperiment(threads, &csr, &ss, &elapsed,[=] {
+    std::mt19937 rg(rand());
+    std::vector<work_unit> w_temp;
+    uint64_t last_us = 0;
+    for (auto &test : load_shift_tests) {
+      double rate = test.rate / (double) total_agents;
+      std::exponential_distribution<double> rd(
+          1.0 / (1000000.0 / (rate / static_cast<double>(threads))));
+      auto work = GenerateWork(std::bind(rd, rg), last_us,
+                               last_us + test.duration, false,
+                               test.mem_bound_work_itr);
+      last_us = work.back().start_us;
+      w_temp.insert(w_temp.end(), work.begin(), work.end());
+    }
+    return w_temp;
+  },
+  [=] {
+    std::mt19937 rg(rand());
+    std::vector<work_unit> w_temp;
+    uint64_t last_us = 0;
+    for (auto &test : load_shift_tests) {
+      double rate = test.rate / (double) total_agents;
+      std::exponential_distribution<double> rd(
+          1.0 / (1000000.0 / (rate / static_cast<double>(threads))));
+      auto work = GenerateWork(std::bind(rd, rg), last_us,
+                               last_us + test.duration, true,
+                               test.mem_bound_work_itr);
+      last_us = work.back().start_us;
+      w_temp.insert(w_temp.end(), work.begin(), work.end());
+    }
+    return w_temp;
+  });
+
+  if (b) {
+    if (!b->EndExperiment(w, &csr)) return;
+  }
+
+  cs = cstat{csr.offered_rps,
+             csr.rps,
+             csr.cpu_bound_req_rps,
+             csr.mem_bound_req_rps,
+             csr.goodput,
+             csr.min_percli_tput,
+             csr.max_percli_tput,
+             static_cast<double>(csr.ecredit_rx) / elapsed * 1000000,
+             static_cast<double>(csr.cupdate_tx) / elapsed * 1000000,
+             static_cast<double>(csr.resp_rx) / elapsed * 1000000,
+             static_cast<double>(csr.req_tx) / elapsed * 1000000,
+             static_cast<double>(csr.credit_expired) / elapsed * 1000000,
+             static_cast<double>(csr.req_dropped) / elapsed * 1000000};
+
+  // Print the results.
+  PrintStatResults(w, &cs, &ss);
+}
+
 void SteadyStateExperiment(int threads, double offered_rps) {
   struct sstat ss;
   struct cstat_raw csr;
@@ -1444,13 +1592,15 @@ void SteadyStateExperiment(int threads, double offered_rps) {
     std::mt19937 rg(rand());
     std::exponential_distribution<double> rd(
         1.0 / (1000000.0 / (offered_rps / static_cast<double>(threads))));
-    return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, false);
+    return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, false,
+        mem_bound_work_itr);
   },
   [=] {
     std::mt19937 rg(rand());
     std::exponential_distribution<double> rd(
         1.0 / (1000000.0 / (offered_rps / static_cast<double>(threads))));
-    return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, true);
+    return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, true,
+        mem_bound_work_itr);
   });
 
   if (b) {
@@ -1494,8 +1644,12 @@ void AgentHandler(void *arg) {
 
   calculate_rates();
 
-  for (double i : offered_loads) {
-    SteadyStateExperiment(threads, i);
+  if (do_load_shift) {
+    LoadShiftExperiment(threads);
+  } else {
+    for (double i : offered_loads) {
+      SteadyStateExperiment(threads, i);
+    }
   }
 }
 
@@ -1516,9 +1670,14 @@ void ClientHandler(void *arg) {
   /* Print Header */
   PrintHeader(std::cout);
 
-  for (double i : offered_loads) {
-    SteadyStateExperiment(threads, i);
+  if (do_load_shift) {
+    LoadShiftExperiment(threads);
     rt::Sleep(1000000);
+  } else {
+    for (double i : offered_loads) {
+      SteadyStateExperiment(threads, i);
+      rt::Sleep(1000000);
+    }
   }
 
   pos = json_out.tellp();
@@ -1596,6 +1755,9 @@ int main(int argc, char *argv[]) {
   } else if (olc.compare("protego") == 0) {
     crpc_ops = &cbw_ops;
     srpc_ops = &sbw2_ops;
+  } else if (olc.compare("pcc") == 0) {
+    crpc_ops = &cpcc_ops;
+    srpc_ops = &spcc_ops;
   } else if (olc.compare("seda") == 0) {
     crpc_ops = &csd_ops;
     srpc_ops = &ssd_ops;
@@ -1617,6 +1779,20 @@ int main(int argc, char *argv[]) {
   std::string cmd = argv[3];
   if (cmd.compare("server") == 0) {
     // Server
+    if (argc < 5) {
+      printf("usage: [alg] [cfg_file] server [msem/no_msem]\n");
+        return -EINVAL;
+    }
+    std::string use_msem_arg = argv[4]; // memory semaphore setting
+    if (use_msem_arg.compare("msem") == 0) {
+      use_msem = true;
+    } else if (use_msem_arg.compare("no_msem") == 0) {
+      use_msem = false;
+    } else {
+      printf("usage: [alg] [cfg_file] server [msem/no_msem]\n");
+      return -EINVAL;
+    }
+
     ret = runtime_init(argv[2], ServerHandler, NULL);
     if (ret) {
       printf("failed to start runtime\n");
@@ -1736,7 +1912,7 @@ int main(int argc, char *argv[]) {
     return -EINVAL;
   }
 
-  if (argc < 12) {
+  if (argc < 13) {
     print_client_usage();
     return -EINVAL;
   }
@@ -1748,8 +1924,17 @@ int main(int argc, char *argv[]) {
   slo = std::stoi(argv[8], nullptr, 0);
   total_agents += std::stoi(argv[9], nullptr, 0);
   offered_load = std::stod(argv[10], nullptr);
+  std::string load_shift_arg = argv[11];
+  if (load_shift_arg == "no_load_shift") {
+      do_load_shift = 0;
+  } else if (load_shift_arg == "load_shift") {
+      do_load_shift = 1;
+  } else {
+      std::cerr << "Invalid load shift argument\n";
+      return -EINVAL;
+  }
 
-  num_servers = argc - 11;
+  num_servers = argc - 12;
   if (num_servers % 2 != 0) {
     print_client_usage();
     return -EINVAL;
@@ -1765,15 +1950,15 @@ int main(int argc, char *argv[]) {
   for(i = 0; i < num_servers; ++i) {
     int nconn_;
 
-    ret = StringToAddr(argv[11+2*i], &raddr[i].ip);
+    ret = StringToAddr(argv[12+2*i], &raddr[i].ip);
     if (ret) {
-      std::cerr << "[Error] Cannot parse server IP:" << argv[11+2*i]
+      std::cerr << "[Error] Cannot parse server IP:" << argv[12+2*i]
 	        << std::endl;
       return -EINVAL;
     }
     raddr[i].port = kNetbenchPort;
 
-    nconn_ = std::stoi(argv[12+2*i], nullptr, 0);
+    nconn_ = std::stoi(argv[13+2*i], nullptr, 0);
     if (nconn_ > 16) {
       std::cerr << "[Warning] the number of parallel connection exceeds 16."
 	        << std::endl;

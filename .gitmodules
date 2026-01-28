@@ -23,3 +23,9 @@
 [submodule "m-semaphore/deps/benchmark"]
 	path = m-semaphore/deps/benchmark
 	url = https://github.com/google/benchmark.git
+[submodule "breakwater/apps/rocksdb/deps/rocksdb"]
+	path = breakwater/apps/rocksdb/deps/rocksdb
+	url = https://github.com/facebook/rocksdb.git
+[submodule "breakwater/apps/dataframe/deps/DataFrame"]
+	path = breakwater/apps/dataframe/deps/DataFrame
+	url = https://github.com/hosseinmoein/DataFrame.git
