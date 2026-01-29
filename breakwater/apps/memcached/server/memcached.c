@@ -6620,8 +6620,7 @@ static void sig_handler(const int sig) {
     exit(EXIT_SUCCESS);
 }
 
-#ifndef HAVE_SIGIGNORE
-static int sigignore(int sig) {
+static int my_sigignore(int sig) {
     struct sigaction sa = { .sa_handler = SIG_IGN, .sa_flags = 0 };
 
     if (sigemptyset(&sa.sa_mask) == -1 || sigaction(sig, &sa, 0) == -1) {
@@ -6629,8 +6628,6 @@ static int sigignore(int sig) {
     }
     return 0;
 }
-#endif
-
 
 /*
  * On systems that supports multiple page sizes we may reduce the
@@ -7853,7 +7850,7 @@ static int memcached_init(void) {
     /* daemonize if requested */
     /* if we want to ensure our ability to dump core, don't chdir to / */
     if (do_daemonize) {
-        if (sigignore(SIGHUP) == -1) {
+        if (my_sigignore(SIGHUP) == -1) {
             perror("Failed to ignore SIGHUP");
         }
         if (daemonize(maxcore, settings.verbose) == -1) {
