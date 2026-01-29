@@ -309,7 +309,7 @@ for offered_load in OFFERED_LOADS:
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config client {:d} {}"\
             " BIMOD_GET 10 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
-            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVER_RUNTIME_IP,
+            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, NODE_IP_ADDR_MAP[SERVERS[0]],
                     MC_SKEY_SIZE, MC_SKEY_COUNT, MC_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT,
                     SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
@@ -318,7 +318,7 @@ for offered_load in OFFERED_LOADS:
     # Start memcached agents
     print("\tExecuting Memcached agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config agent {}"\
-            " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+            " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, NODE_IP_ADDR_MAP[CLIENT])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin

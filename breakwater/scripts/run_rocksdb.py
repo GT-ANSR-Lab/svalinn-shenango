@@ -312,7 +312,7 @@ for offered_load in OFFERED_LOADS:
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_client client.config {} client"\
           " {} {} 8001 {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
-          .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVER_RUNTIME_IP,
+          .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, NODE_IP_ADDR_MAP[SERVERS[0]],
                   RDB_SKEY_SIZE, RDB_SKEY_COUNT, RDB_LKEY_SIZE, RDB_LKEY_COUNT,
                   RDB_SKEY_PCNT, SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
@@ -321,7 +321,7 @@ for offered_load in OFFERED_LOADS:
     # Start RocksDB agents
     print("\tExecuting RocksDB agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_client client.config {} agent {}"\
-          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, NODE_IP_ADDR_MAP[CLIENT])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin

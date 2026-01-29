@@ -58,13 +58,6 @@ CPU_BOUND_WORK_ITR = 5000
 MEM_BOUND_WORK_ITR = 25
 CPU_BOUND_REQ_PCNT = 0
 
-# Client and Server Caladan Runtime IP addresses
-SERVER_RUNTIME_IP = "192.168.1.200"
-CLIENT_RUNTIME_IP = "192.168.1.100"
-AGENT_RUNTIME_IPS = [ "192.168.1." + str(101 + i) for i in range(NUM_AGENTS)]
-RUNTIME_NETMASK = "255.255.255.0"
-RUNTIME_GATEWAY = "192.168.1.1"
-
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
 FILES_TO_REPLACE = [
@@ -301,14 +294,14 @@ for offered_load in OFFERED_LOADS:
           .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS,
                   CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, CPU_BOUND_REQ_PCNT,
                   SLO, NUM_AGENTS, offered_load,
-                  "load_shift" if LOAD_SHIFT else "no_load_shift", SERVER_RUNTIME_IP)
+                  "load_shift" if LOAD_SHIFT else "no_load_shift", NODE_IP_ADDR_MAP[SERVERS[0]])
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
 
     # Start netbench agents
     print("\tExecuting netbench agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench {} client.config agent {}"\
-          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, NODE_IP_ADDR_MAP[CLIENT])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin
