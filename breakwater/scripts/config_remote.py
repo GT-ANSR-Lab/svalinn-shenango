@@ -50,8 +50,8 @@ MONITOR = ""
 
 # Username and SSH credential location to access
 # the server, client, and agents via public IP
-USERNAME = "bhaskar3"
-KEY_LOCATION = "/users/bhaskar3/.ssh/id_rsa"
+USERNAME = "bpardeshi3"
+KEY_LOCATION = "/home/bpardeshi3/.ssh/id_rsa"
 
 # Location of Shenango to be installed. With "", Shenango
 # will be installed in the home direcotry
