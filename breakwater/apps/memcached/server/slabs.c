@@ -8,6 +8,8 @@
  * memcached protocol.
  */
 #include "memcached.h"
+#include <breakwater/sync.h>
+#include <breakwater/rpc.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
 #include <fcntl.h>
@@ -595,7 +597,11 @@ void *slabs_alloc(size_t size, unsigned int id, uint64_t *total_bytes,
         unsigned int flags) {
     void *ret;
 
-    mutex_lock(&slabs_lock);
+    /* mutex_lock(&slabs_lock); */
+    if (!mutex_lock_if_uncongested(&slabs_lock)) {
+        srpc_ops->srpc_drop();
+        return NULL;
+    }
     ret = do_slabs_alloc(size, id, total_bytes, flags);
     mutex_unlock(&slabs_lock);
     return ret;

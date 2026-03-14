@@ -27,7 +27,7 @@ with zipfile.ZipFile("data/eur_usd_fx.zip", "r") as zip_ref:
 orig_xlsx_file_list = glob.glob("data/*.xlsx")
 orig_xlsx_file_list.sort()
 # Consider only the first two files
-xlsx_file_list = orig_xlsx_file_list[:2]
+xlsx_file_list = orig_xlsx_file_list[:1]
 
 df_list = []
 for xlsx_file in xlsx_file_list:

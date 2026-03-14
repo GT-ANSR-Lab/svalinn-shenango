@@ -127,9 +127,13 @@ namespace {
     struct cstat_raw {
         double offered_rps;
         double rps;
+        double set_rps;
         double skey_rps;
         double lkey_rps;
         double goodput;
+        double set_goodput;
+        double skey_goodput;
+        double lkey_goodput;
         double min_percli_tput;
         double max_percli_tput;
         uint64_t winu_rx;
@@ -143,9 +147,13 @@ namespace {
     struct cstat {
         double offered_rps;
         double rps;
+        double set_rps;
         double skey_rps;
         double lkey_rps;
         double goodput;
+        double set_goodput;
+        double skey_goodput;
+        double lkey_goodput;
         double min_percli_tput;
         double max_percli_tput;
         double winu_rx_pps;
@@ -166,6 +174,7 @@ namespace {
         uint64_t server_queue;
         uint64_t client_queue;
         bool is_skey;
+        bool is_set;
         int key;
     };
 
@@ -253,9 +262,13 @@ namespace {
                     BUG_ON(c->ReadFull(&rem_csr, sizeof(rem_csr)) <= 0);
                     csr->offered_rps += rem_csr.offered_rps;
                     csr->rps += rem_csr.rps;
+                    csr->set_rps += rem_csr.set_rps;
                     csr->skey_rps += rem_csr.skey_rps;
                     csr->lkey_rps += rem_csr.lkey_rps;
                     csr->goodput += rem_csr.goodput;
+                    csr->set_goodput += rem_csr.set_goodput;
+                    csr->skey_goodput += rem_csr.skey_goodput;
+                    csr->lkey_goodput += rem_csr.lkey_goodput;
                     csr->min_percli_tput = MIN(rem_csr.min_percli_tput,
                                                csr->min_percli_tput);
                     csr->max_percli_tput = MAX(rem_csr.max_percli_tput,
@@ -397,8 +410,6 @@ namespace {
 	            smap["tx_bytes"], smap["drops"], smap["rx_tcp_out_of_order"]};
     }
 
-    constexpr uint64_t kMemcachedRpcServerPort = 8001;
-
     // The maximum lateness to tolerate before dropping egress samples.
     constexpr uint64_t kMaxCatchUpUS = 5;
 
@@ -419,15 +430,40 @@ namespace {
             wu.hash = rand();
             wu.success = false;
             wu.is_skey = true;
+            wu.is_set = false;
 
-            // For bimodal get requests only
-            if (wtype == 4) {
+            if (wtype == 1) {   // SET
+                wu.is_set = true;
+            }
+
+            if (wtype == 3) {   // USR
+                if (rand() % 1000 >= 998) {
+                    wu.is_set = true;
+                }
+            }
+
+            if (wtype == 4) {   // BIMOD_GET
                 if ((rand() % 100) < skey_pcnt) {
-                    wu.is_skey = true;
                     wu.key = rand() % skey_count;
                 } else {
                     wu.is_skey = false;
                     wu.key = rand() % lkey_count;
+                }
+            }
+
+            if (wtype == 5) {   // BIMOD_VAR
+                if ((rand() % 100) < 82) {
+                    // SET request
+                    wu.is_set = true;
+                    wu.key = rand() % skey_count;
+                } else {
+                    // GET request
+                    if ((rand() % 100) < skey_pcnt) {
+                        wu.key = rand() % skey_count;
+                    } else {
+                        wu.is_skey = false;
+                        wu.key = rand() % lkey_count;
+                    }
                 }
             }
 
@@ -520,21 +556,21 @@ namespace {
                 GenerateRandomString(value, kValueLen, w[i].hash);
                 buflen = ConstructMemcachedSetReq(buf, 4096, i,
                                                   key.c_str(), key.length(),
-                                                  value, kValueLen);
+                                                  value, kValueLen, 1);
             } else if (wtype == 2) { // GET
                 std::string key = std::to_string(w[i].hash % max_key_idx);
                 buflen = ConstructMemcachedGetReq(buf, 4096, i,
                                                   key.c_str(), key.length(), 1);
             } else if (wtype == 3) { // USR
                 std::string key = std::to_string(w[i].hash % max_key_idx);
-                if (w[i].hash % 1000 < 998) {
+                if (!w[i].is_set) {
                     buflen = ConstructMemcachedGetReq(buf, 4096, i,
                                                       key.c_str(), key.length(), 1);
                 } else {
                     GenerateRandomString(value, kValueLen, w[i].hash);
                     buflen = ConstructMemcachedSetReq(buf, 4096, i,
                                                       key.c_str(), key.length(),
-                                                      value, kValueLen);
+                                                      value, kValueLen, 1);
                 }
             } else if (wtype == 4) { // BIMOD_GET
                 std::string key = (w[i].is_skey ? "skey-" : "lkey-") + \
@@ -542,6 +578,21 @@ namespace {
                 buflen = ConstructMemcachedGetReq(buf, 4096, i,
                                                   key.c_str(), key.length(),
                                                   w[i].is_skey);
+            } else if (wtype == 5) { // BIMOD_VAR
+                std::string key = (w[i].is_skey ? "skey-" : "lkey-") + \
+                    std::to_string(w[i].key);
+                if (w[i].is_set) {
+                    GenerateRandomString(value, skey_size, w[i].hash);
+                    buflen = ConstructMemcachedSetReq(buf, 4096, i,
+                                                      key.c_str(), key.length(),
+                                                      value, skey_size,
+                                                      w[i].is_skey);
+                } else {
+                    buflen = ConstructMemcachedGetReq(buf, 4096, i,
+                                                      key.c_str(), key.length(),
+                                                      w[i].is_skey);
+                }
+
             } else {
                 panic("unsupported workload type\n");
             }
@@ -648,8 +699,12 @@ namespace {
         double max_throughput = 0.0;
         uint64_t good_resps = 0;
         uint64_t resps = 0;
+        uint64_t set_resps = 0;
         uint64_t skey_resps = 0;
         uint64_t lkey_resps = 0;
+        uint64_t set_good_resps = 0;
+        uint64_t skey_good_resps = 0;
+        uint64_t lkey_good_resps = 0;
         uint64_t offered = 0;
         uint64_t client_drop = 0;
 
@@ -657,7 +712,11 @@ namespace {
             auto &v = *samples[i];
             double throughput;
             int slo_success;
+            int set_slo_success;
+            int skey_slo_success;
+            int lkey_slo_success;
             int resp_success;
+            int set_resp_success;
             int skey_resp_success;
             int lkey_resp_success;
 
@@ -682,20 +741,36 @@ namespace {
             resp_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
                     return s.success;
                 });
+            set_resp_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                    return s.success && s.is_set;
+                });
             skey_resp_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
-                    return s.success && s.is_skey;
+                    return s.success && !s.is_set && s.is_skey;
                 });
             lkey_resp_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
-                    return s.success && !s.is_skey;
+                    return s.success && !s.is_set && !s.is_skey;
                 });
             slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
                     return s.success && s.duration_us < slo;
                 });
+            set_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                    return s.success && s.is_set && s.duration_us < slo;
+                });
+            skey_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                    return s.success && !s.is_set && s.is_skey && s.duration_us < slo;
+                });
+            lkey_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                    return s.success && !s.is_set && !s.is_skey && s.duration_us < slo;
+                });
 
             resps += resp_success;
+            set_resps += set_resp_success;
             skey_resps += skey_resp_success;
             lkey_resps += lkey_resp_success;
             good_resps += slo_success;
+            set_good_resps += set_slo_success;
+            skey_good_resps += skey_slo_success;
+            lkey_good_resps += lkey_slo_success;
 
             if (i == 0) {
                 min_throughput = throughput;
@@ -712,9 +787,13 @@ namespace {
         if (csr) {
             csr->offered_rps = static_cast<double>(offered) / elapsed_ * 1000000;
             csr->rps = static_cast<double>(resps) / elapsed_ * 1000000;
+            csr->set_rps = static_cast<double>(set_resps) / elapsed_ * 1000000;
             csr->skey_rps = static_cast<double>(skey_resps) / elapsed_ * 1000000;
             csr->lkey_rps = static_cast<double>(lkey_resps) / elapsed_ * 1000000;
             csr->goodput = static_cast<double>(good_resps) / elapsed_ * 1000000;
+            csr->set_goodput = static_cast<double>(set_good_resps) / elapsed_ * 1000000;
+            csr->skey_goodput = static_cast<double>(skey_good_resps) / elapsed_ * 1000000;
+            csr->lkey_goodput = static_cast<double>(lkey_good_resps) / elapsed_ * 1000000;
             csr->min_percli_tput = min_throughput;
             csr->max_percli_tput = max_throughput;
         }
@@ -755,11 +834,11 @@ namespace {
     }
 
     void PrintHeader(std::ostream& os) {
-        os << "num_threads," << "offered_load," << "throughput," << "skey_throughput,"
-           << "lkey_throughput," << "goodput," << "cpu," << "min,"
-           << "mean," << "p50," << "skey_p50," << "lkey_p50,"
-           << "p90," << "skey_p90," << "lkey_p90,"
-           << "p99," << "skey_p99," << "lkey_p99," << "p999," << "p9999," << "max,"
+        os << "num_threads," << "offered_load," << "throughput," << "set_throughput," << "skey_throughput,"
+           << "lkey_throughput," << "goodput," << "set_goodput," << "skey_goodput," << "lkey_goodput," << "cpu," << "min,"
+           << "mean," << "set_mean," << "skey_mean," << "lkey_mean," << "p50," << "set_p50," << "skey_p50," << "lkey_p50,"
+           << "p90," << "set_p90," << "skey_p90," << "lkey_p90,"
+           << "p99," << "set_p99," << "skey_p99," << "lkey_p99," << "p999," << "p9999," << "max,"
            << "lmin," << "lmean," << "lp50," << "lp90," << "lp99," << "lp999," << "lp9999,"
            << "lmax," << "p1_win," << "mean_win," << "p99_win," << "p1_q," << "mean_q,"
            << "p99_q," << "server:rx_pps," << "server:tx_pps," << "server:rx_bps,"
@@ -786,38 +865,78 @@ namespace {
                                }), w.end());
 
         // Get the p99 times for short and long requests separately
+        std::vector<work_unit> set_work;
         std::vector<work_unit> skey_work;
         std::vector<work_unit> lkey_work;
+        double set_work_count = 0;
+        double set_mean = 0;
+        double set_p50 = 0;
+        double set_p90 = 0;
+        double set_p99 = 0;
         double skey_work_count = 0;
+        double skey_mean = 0;
         double skey_p50 = 0;
         double skey_p90 = 0;
         double skey_p99 = 0;
         double lkey_work_count = 0;
+        double lkey_mean = 0;
         double lkey_p50 = 0;
         double lkey_p90 = 0;
         double lkey_p99 = 0;
+
+        // For set
+        std::copy_if(w.begin(), w.end(), std::back_inserter(set_work), [](work_unit &s) {
+                return s.success && s.is_set;
+            });
+        std::sort(set_work.begin(), set_work.end(),
+                  [](const work_unit &s1, const work_unit &s2) {
+                      return s1.duration_us < s2.duration_us;
+                  });
+        double set_sum = std::accumulate(
+            set_work.begin(), set_work.end(), 0.0,
+            [](double s, const work_unit &c) { return s + c.duration_us; });
+
+        // For skey
         std::copy_if(w.begin(), w.end(), std::back_inserter(skey_work), [](work_unit &s) {
-                return s.success && s.is_skey;
+                return s.success && !s.is_set && s.is_skey;
             });
         std::sort(skey_work.begin(), skey_work.end(),
                   [](const work_unit &s1, const work_unit &s2) {
                       return s1.duration_us < s2.duration_us;
                   });
+        double skey_sum = std::accumulate(
+            skey_work.begin(), skey_work.end(), 0.0,
+            [](double s, const work_unit &c) { return s + c.duration_us; });
+
+        // For lkey
         std::copy_if(w.begin(), w.end(), std::back_inserter(lkey_work), [](work_unit &s) {
-                return s.success && !s.is_skey;
+                return s.success && !s.is_set && !s.is_skey;
             });
         std::sort(lkey_work.begin(), lkey_work.end(),
                   [](const work_unit &s1, const work_unit &s2) {
                       return s1.duration_us < s2.duration_us;
                   });
+        double lkey_sum = std::accumulate(
+            lkey_work.begin(), lkey_work.end(), 0.0,
+            [](double s, const work_unit &c) { return s + c.duration_us; });
+
+        set_work_count = static_cast<double>(set_work.size());
+        if (set_work_count) {
+            set_mean = set_sum / set_work_count;
+            set_p50 = set_work[set_work_count * 0.50].duration_us;
+            set_p90 = set_work[set_work_count * 0.90].duration_us;
+            set_p99 = set_work[set_work_count * 0.99].duration_us;
+        }
         skey_work_count = static_cast<double>(skey_work.size());
         if (skey_work_count) {
+            skey_mean = skey_sum / skey_work_count;
             skey_p50 = skey_work[skey_work_count * 0.50].duration_us;
             skey_p90 = skey_work[skey_work_count * 0.90].duration_us;
             skey_p99 = skey_work[skey_work_count * 0.99].duration_us;
         }
         lkey_work_count = static_cast<double>(lkey_work.size());
         if (lkey_work_count) {
+            lkey_mean = lkey_sum / lkey_work_count;
             lkey_p50 = lkey_work[lkey_work_count * 0.50].duration_us;
             lkey_p90 = lkey_work[lkey_work_count * 0.90].duration_us;
             lkey_p99 = lkey_work[lkey_work_count * 0.99].duration_us;
@@ -880,11 +999,13 @@ namespace {
         double mean_cque = sum_cque / w.size();
 
         std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
-                  << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
-                  << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << ","
-                  << min << "," << mean << "," << p50 << "," << skey_p50 << ","
-                  << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
-                  << p99 << "," << skey_p99 << "," << lkey_p99 << ","
+                  << cs->offered_rps << "," << cs->rps << "," << cs->set_rps << "," << cs->skey_rps << ","
+                  << cs->lkey_rps << "," << cs->goodput << "," << cs->set_goodput << "," << cs->skey_goodput << ","
+                  << cs->lkey_goodput << "," << ss->cpu_usage << ","
+                  << min << "," << mean << "," << set_mean << "," << skey_mean << "," << lkey_mean << ","
+                  << p50 << "," << set_p50 << "," << skey_p50 << ","
+                  << lkey_p50 << "," << p90 << "," << set_p90 << "," << skey_p90 << "," << lkey_p90 << ","
+                  << p99 << "," << set_p99 << "," << skey_p99 << "," << lkey_p99 << ","
                   << p999 << "," << p9999 << "," << max << "," << lmin << "," << lmean << ","
                   << lp50 << "," << lp90 << "," << lp99 << "," << lp999 << ","
                   << lp9999 << "," << lmax << "," << p1_win << ","
@@ -899,11 +1020,13 @@ namespace {
                   << cs->req_dropped_rps << std::endl;
 
         csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
-                << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
-                << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << ","
-                << min << "," << mean << "," << p50 << "," << skey_p50 << ","
-                << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
-                << p99 << "," << skey_p99 << "," << lkey_p99 << ","
+                << cs->offered_rps << "," << cs->rps << "," << cs->set_rps << "," << cs->skey_rps << ","
+                << cs->lkey_rps << "," << cs->goodput << "," << cs->set_goodput << "," << cs->skey_goodput << ","
+                << cs->lkey_goodput << "," << ss->cpu_usage << ","
+                << min << "," << mean << "," << set_mean << "," << skey_mean << "," << lkey_mean << ","
+                << p50 << "," << set_p50 << "," << skey_p50 << ","
+                << lkey_p50 << "," << p90 << "," << set_p90 << "," << skey_p90 << "," << lkey_p90 << ","
+                << p99 << "," << set_p99 << "," << skey_p99 << "," << lkey_p99 << ","
                 << p999 << "," << p9999 << "," << max << "," << lmin << "," << lmean << ","
                 << lp50 << "," << lp90 << "," << lp99 << "," << lp999 << ","
                 << lp9999 << "," << lmax << "," << p1_win << ","
@@ -915,25 +1038,36 @@ namespace {
                 << cs->min_percli_tput << "," << cs->max_percli_tput << ","
                 << mean_cque << "," << cs->winu_rx_pps << "," << cs->resp_rx_pps << ","
                 << cs->req_tx_pps << "," << cs->win_expired_wps << ","
-                << cs->req_dropped_rps << std::endl << std::flush;
+                << cs->req_dropped_rps << std::endl;
+
 
         json_out << "{"
                  << "\"num_threads\":" << threads * total_agents << ","
                  << "\"offered_load\":" << cs->offered_rps << ","
                  << "\"throughput\":" << cs->rps << ","
+                 << "\"set_throughput\":" << cs->set_rps << ","
                  << "\"skey_throughput\":" << cs->skey_rps << ","
                  << "\"lkey_throughput\":" << cs->lkey_rps << ","
                  << "\"goodput\":" << cs->goodput << ","
+                 << "\"set_goodput\":" << cs->set_goodput << ","
+                 << "\"skey_goodput\":" << cs->skey_goodput << ","
+                 << "\"lkey_goodput\":" << cs->lkey_goodput << ","
                  << "\"cpu\":" << ss->cpu_usage << ","
                  << "\"min\":" << min << ","
                  << "\"mean\":" << mean << ","
+                 << "\"set_mean\":" << set_mean << ","
+                 << "\"skey_mean\":" << skey_mean << ","
+                 << "\"lkey_mean\":" << lkey_mean << ","
                  << "\"p50\":" << p50 << ","
+                 << "\"set_p50\":" << set_p50 << ","
                  << "\"skey_p50\":" << skey_p50 << ","
                  << "\"lkey_p50\":" << lkey_p50 << ","
                  << "\"p90\":" << p90 << ","
+                 << "\"set_p90\":" << set_p90 << ","
                  << "\"skey_p90\":" << skey_p90 << ","
                  << "\"lkey_p90\":" << lkey_p90 << ","
                  << "\"p99\":" << p99 << ","
+                 << "\"set_p99\":" << set_p99 << ","
                  << "\"skey_p99\":" << skey_p99 << ","
                  << "\"lkey_p99\":" << lkey_p99 << ","
                  << "\"p999\":" << p999 << ","
@@ -998,9 +1132,13 @@ namespace {
 
         cs = cstat{csr.offered_rps,
                    csr.rps,
+                   csr.set_rps,
                    csr.skey_rps,
                    csr.lkey_rps,
                    csr.goodput,
+                   csr.set_goodput,
+                   csr.skey_goodput,
+                   csr.lkey_goodput,
                    csr.min_percli_tput,
                    csr.max_percli_tput,
                    static_cast<double>(csr.winu_rx) / elapsed * 1000000,
@@ -1058,6 +1196,8 @@ namespace {
             wname = std::string("usr");
         else if (wtype == 4)
             wname = std::string("bimod_get");
+        else if (wtype == 5)
+            wname = std::string("bimod_var");
         else
             wname = std::string("unknown");
 
@@ -1143,7 +1283,6 @@ int main(int argc, char *argv[]) {
 
     ret = StringToAddr(argv[5], &raddr.ip);
     if (ret) return -EINVAL;
-    raddr.port = kMemcachedRpcServerPort;
 
     std::string wtype_ = argv[6];
     if (wtype_.compare("SET") == 0)
@@ -1154,6 +1293,8 @@ int main(int argc, char *argv[]) {
         wtype = 3;
     else if (wtype_.compare("BIMOD_GET") == 0)
         wtype = 4;
+    else if (wtype_.compare("BIMOD_VAR") == 0)
+        wtype = 5;
     else {
         std::cerr << "invalid workload type: " << wtype_ << std::endl;
         return -EINVAL;

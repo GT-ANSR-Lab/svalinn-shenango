@@ -58,7 +58,7 @@ SHEN_LIBS="$RUNTIME_LIBS -lbw -lmsem -lpcm -lpthread -lnuma -lm -lstdc++"
 if test $ac_cv_shenango_dir != "(system)"; then
     SHEN_LDFLAGS="-no-pie -L$ac_cv_shenango_dir -L$ac_cv_shenango_dir/breakwater -L$ac_cv_shenango_dir/m-semaphore/build -L$ac_cv_shenango_dir/m-semaphore/deps/pcm/build/src -T $ac_cv_shenango_dir/base/base.ld"
     le_libdir="$ac_cv_shenango_dir"
-    SHEN_CPPFLAGS="-I$ac_cv_shenango_dir/inc -I$ac_cv_shenango_dir/breakwater/inc -I$ac_cv_shenango_dir/m-semaphore/inc -I$ac_cv_shenango_dir/m-semaphore/bindings -I$ac_cv_shenango_dir/m-semaphore/deps/pcm/src"
+    SHEN_CPPFLAGS="-I$ac_cv_shenango_dir/inc -I$ac_cv_shenango_dir/breakwater/inc -I$ac_cv_shenango_dir/m-semaphore/inc -I$ac_cv_shenango_dir/m-semaphore/utils -I$ac_cv_shenango_dir/m-semaphore/bindings -I$ac_cv_shenango_dir/m-semaphore/deps/pcm/src"
 fi
 SHEN_CPPFLAGS="-DNDEBUG -O3 -Wall -std=gnu11 -D_GNU_SOURCE -mssse3 $SHEN_CPPFLAGS"
 

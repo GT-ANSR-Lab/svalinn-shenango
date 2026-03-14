@@ -8,6 +8,7 @@ INC += -I$(ROOT_PATH)/bindings
 INC += -I$(ROOT_PATH)/breakwater/inc
 INC += -I$(ROOT_PATH)/breakwater/bindings/cc/inc
 INC += -I$(ROOT_PATH)/m-semaphore/inc
+INC += -I$(ROOT_PATH)/m-semaphore/utils
 INC += -I$(ROOT_PATH)/m-semaphore/bindings
 INC += -I$(ROOT_PATH)/m-semaphore/deps/pcm/src
 
@@ -24,18 +25,28 @@ netbench_src = netbench.cc
 netbench_obj = $(BUILD_PATH)/$(netbench_src:.cc=.o)
 netbench_tgt = $(BUILD_PATH)/netbench
 
+netbench_ms_src = netbench_multi_server.cc
+netbench_ms_obj = $(BUILD_PATH)/$(netbench_ms_src:.cc=.o)
+netbench_ms_tgt = $(BUILD_PATH)/netbench_ms
+
+
 RUNTIME_LIBS := $(RUNTIME_LIBS) -lnuma -lm
 
 # must be first
-all: $(netbench_tgt)
+all: $(netbench_tgt) $(netbench_ms_tgt)
 
 $(netbench_tgt): $(lib_obj) $(netbench_obj) $(librt) $(libbw) $(libbwpp) $(libmsem) $(libpcm) $(RUNTIME_DEPS)
 	mkdir -p $(BUILD_PATH)
 	$(LDXX) -o $@ $(LDFLAGS) $(lib_obj) $(netbench_obj) \
 	$(librt) $(libbw) $(libbwpp) $(libmsem) $(libpcm) $(RUNTIME_LIBS)
 
+$(netbench_ms_tgt): $(lib_obj) $(netbench_ms_obj) $(librt) $(libbw) $(libbwpp) $(libmsem) $(libpcm) $(RUNTIME_DEPS)
+	mkdir -p $(BUILD_PATH)
+	$(LDXX) -o $@ $(LDFLAGS) $(lib_obj) $(netbench_ms_obj) \
+	$(librt) $(libbw) $(libbwpp) $(libmsem) $(libpcm) $(RUNTIME_LIBS)
+
 # general build rules for all targets
-src = $(lib_src) $(netbench_src)
+src = $(lib_src) $(netbench_src) $(netbench_ms_src)
 obj = $(BUILD_PATH)/$(src:.cc=.o)
 dep = $(BUILD_PATH)/$(obj:.o=.d)
 

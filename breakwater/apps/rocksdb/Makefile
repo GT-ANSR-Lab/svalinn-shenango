@@ -8,6 +8,7 @@ INC += -I$(ROOT_PATH)/breakwater/inc/
 INC += -I$(ROOT_PATH)/breakwater/bindings/cc/inc/
 INC += -Ideps/rocksdb/include
 INC += -I$(ROOT_PATH)/m-semaphore/inc
+INC += -I$(ROOT_PATH)/m-semaphore/utils
 INC += -I$(ROOT_PATH)/m-semaphore/bindings
 INC += -I$(ROOT_PATH)/m-semaphore/deps/pcm/src
 

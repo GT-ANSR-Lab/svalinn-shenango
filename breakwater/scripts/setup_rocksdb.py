@@ -38,6 +38,8 @@ execute_remote(conns, cmd, True)
 
 # build rocksdb (only on server)
 print("Building core RocksDB library...")
+cmd = "cd ~/{}/breakwater/apps/rocksdb/deps/rocksdb && git apply ../../rocksdb.patch".format(ARTIFACT_PATH)
+execute_remote([server_conn], cmd, True)
 cmd = "cd ~/{}/breakwater/apps/rocksdb/deps/rocksdb && make clean && make -j16 static_lib".format(ARTIFACT_PATH)
 execute_remote([server_conn], cmd, True)
 

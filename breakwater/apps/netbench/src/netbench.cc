@@ -79,8 +79,8 @@ int total_agents = 1;
 // number of iterations required for 1us on target server
 constexpr uint64_t kIterationsPerUS = 69;  // 83
 // Total duration of the experiment in us
-constexpr uint64_t kWarmUpTime = 8000000;
-constexpr uint64_t kExperimentTime = 16000000;
+constexpr uint64_t kWarmUpTime = 3000000;
+constexpr uint64_t kExperimentTime = 8000000;
 // RTT
 constexpr uint64_t kRTT = 10;
 constexpr uint64_t kNumDupClient = 32;
@@ -100,24 +100,18 @@ std::vector<load_shift_test> load_shift_tests = {
   // This is for warmup
   {.rate = 1000000,
    .duration = kWarmUpTime,
-   .mem_bound_work_itr = 0},
+   .mem_bound_work_itr = 25},
 
   // Actual rates, we want to test
   {.rate = 1000000,
    .duration = 2000000,
-   .mem_bound_work_itr = 10},
+   .mem_bound_work_itr = 25},
   {.rate = 1000000,
    .duration = 2000000,
-   .mem_bound_work_itr = 100},
+   .mem_bound_work_itr = 500},
   {.rate = 1000000,
    .duration = 2000000,
-   .mem_bound_work_itr = 10},
-  {.rate = 80000,
-   .duration = 2000000,
-   .mem_bound_work_itr = 0},
-  {.rate = 40000,
-   .duration = 2000000,
-   .mem_bound_work_itr = 0},
+   .mem_bound_work_itr = 25},
  };
 
 
@@ -134,6 +128,7 @@ struct payload {
   uint64_t server_queue;
   uint64_t hash;
   uint64_t work_us;
+  uint32_t msem_cap;
 };
 constexpr int PAYLOAD_ID_OFF = offsetof(payload, index);
 
@@ -231,6 +226,7 @@ struct work_unit {
   uint64_t server_time;
   uint64_t timing;
   uint64_t work_us;
+  uint32_t msem_cap;
 };
 
 class NetBarrier {
@@ -582,6 +578,11 @@ void RpcServer(struct srpc_ctx *ctx) {
   out->cpu = hton32(out->cpu);
   out->server_queue = hton64(rt::RuntimeQueueUS());
   out->work_us = hton64(end - start);
+  if (use_msem) {
+      out->msem_cap = hton32(msem->GetCapacity());
+  } else {
+      out->msem_cap = 0;
+  }
 }
 
 #ifdef PROFILE_ST
@@ -648,7 +649,9 @@ void ServerHandler(void *arg) {
 #endif
 
   // Create the memory semaphore object
-  msem = MemSemaphore::GetInstance();
+  if (use_msem) {
+      msem = MemSemaphore::GetInstance();
+  }
 
   int ret = rpc::RpcServerEnable(RpcServer);
   if (ret) panic("couldn't enable RPC server");
@@ -892,6 +895,7 @@ std::vector<work_unit> ClientWorker(
         w[idx].server_queue = ntoh64(rp.server_queue);
         w[idx].work_us = ntoh64(rp.work_us);
         w[idx].server_time = w[idx].work_us + w[idx].server_queue;
+        w[idx].msem_cap = ntoh32(rp.msem_cap);
       }
     }));
   }
@@ -977,7 +981,6 @@ std::vector<work_unit> RunExperiment(
   int conn_idx;
 
   for (int i = 0; i < threads; ++i) {
-    //struct rpc_session_info info = {.session_type = (i % 10 < 1 ? 1 : 0)};
     struct rpc_session_info info = {.session_type = 0};
     std::unique_ptr<rpc::RpcClient> outc(rpc::RpcClient::Dial(raddr[0], i + 1,
 					ClientLocalDropHandler,
@@ -985,21 +988,20 @@ std::vector<work_unit> RunExperiment(
 					&info));
     if (unlikely(outc == nullptr)) panic("couldn't connect to raddr.");
 
-    if (nconn[0] > 1) {
-      server_idx = 0;
-      conn_idx = 1;
-    } else {
-      server_idx = 1;
-      conn_idx = 0;
+    server_idx = 0;
+    conn_idx = 1;
+
+    // Add the connections to other server replicas
+    while (server_idx < num_servers) {
+      if (conn_idx >= nconn[server_idx]) {
+        ++server_idx;
+        conn_idx = 0;
+        continue;
+      }
+      outc->AddConnection(raddr[server_idx]);
+      ++conn_idx;
     }
 
-    while (server_idx < num_servers) {
-      outc->AddConnection(raddr[server_idx]);
-      if (++conn_idx >= nconn[server_idx]) {
-        server_idx++;
-	conn_idx = 0;
-      }
-    }
     clients.emplace_back(std::move(outc));
   }
 
@@ -1393,12 +1395,13 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
     });
     std::ofstream all_tasks_file;
     all_tasks_file.open ("all_tasks.csv");
-    all_tasks_file << "start_us,is_cpu_bound,work_us,duration_us,tsc,server_queue,server_time" << std::endl;
+    all_tasks_file << "start_us,is_cpu_bound,work_us,msem_cap,duration_us,tsc,server_queue,server_time" << std::endl;
     all_tasks_file << std::setprecision(8) << std::fixed;
     for (unsigned int i = 0; i < w.size(); ++i) {
       all_tasks_file << w[i].start_us << ","
                      << w[i].is_cpu_bound_req << ","
                      << w[i].work_us << ","
+                     << w[i].msem_cap << ","
                      << w[i].duration_us << ","
                      << w[i].tsc << ","
                      << w[i].server_queue << ","

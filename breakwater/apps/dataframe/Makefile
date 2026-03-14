@@ -8,13 +8,14 @@ INC += -I$(ROOT_PATH)/breakwater/inc/
 INC += -I$(ROOT_PATH)/breakwater/bindings/cc/inc/
 INC += -Ideps/DataFrame/include
 INC += -I$(ROOT_PATH)/m-semaphore/inc
+INC += -I$(ROOT_PATH)/m-semaphore/utils
 INC += -I$(ROOT_PATH)/m-semaphore/bindings
 INC += -I$(ROOT_PATH)/m-semaphore/deps/pcm/src
 
 LIBS += -lpthread -ldl -lnuma -lm
 
 lib_df = deps/DataFrame/Release/lib/libDataFrame.a
-lib_shim = $(ROOT_PATH)/shim/libshim.a
+# lib_shim = $(ROOT_PATH)/shim/libshim.a
 lib_rt = $(ROOT_PATH)/bindings/cc/librt++.a
 libbw = $(ROOT_PATH)/breakwater/libbw.a
 libbwpp = $(ROOT_PATH)/breakwater/bindings/cc/libbw++.a

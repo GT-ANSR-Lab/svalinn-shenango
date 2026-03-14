@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <breakwater/sync.h>
+#include <breakwater/rpc.h>
 
 #ifdef __sun
 #include <atomic.h>
@@ -693,7 +694,10 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
     uint32_t hv;
 
     hv = hash(ITEM_key(item), item->nkey);
-    item_lock(hv);
+    if (!item_lock_if_uncongested(hv)) {
+        srpc_ops->srpc_drop();
+        return NOT_STORED;
+    }
     ret = do_store_item(item, comm, c, hv);
     item_unlock(hv);
     return ret;

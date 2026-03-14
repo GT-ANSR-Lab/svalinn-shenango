@@ -4065,6 +4065,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 i++;
 #endif
             } else {
+                srpc_ops->srpc_drop();
                 STATS_LOCAL_LOCK();
                 if (should_touch) {
                     mythr()->stats.touch_cmds++;
@@ -6629,6 +6630,7 @@ static int my_sigignore(int sig) {
     return 0;
 }
 
+
 /*
  * On systems that supports multiple page sizes we may reduce the
  * number of TLB-misses by using the biggest available page size
@@ -8224,6 +8226,7 @@ static void profile_service_times() {
     }
 
     uint64_t times[NB_TIMES];
+    uint64_t sum_times = 0;
 
     /* Populate the short keys */
     for (int i = 0; i < NB_TIMES; ++i) {
@@ -8248,15 +8251,19 @@ static void profile_service_times() {
         drive_machine(c);
         uint64_t end = microtime();
         times[i] = end - start;
+        sum_times += times[i];
     }
 
     bubble_sort(&times[0], NB_TIMES);
     printf("Short key service times\n");
+    printf("avg: %ld\n", sum_times / NB_TIMES);
     printf("p50: %ld\n", times[(int)(NB_TIMES * 0.5)]);
     printf("p90: %ld\n", times[(int)(NB_TIMES * 0.9)]);
     printf("p99: %ld\n", times[(int)(NB_TIMES * 0.99)]);
     printf("p999: %ld\n", times[(int)(NB_TIMES * 0.999)]);
 
+
+    sum_times = 0;
 
     /* Populate the long keys */
     for (int i = 0; i < NB_TIMES; ++i) {
@@ -8281,10 +8288,12 @@ static void profile_service_times() {
         drive_machine(c);
         uint64_t end = microtime();
         times[i] = end - start;
+        sum_times += times[i];
     }
 
     bubble_sort(&times[0], NB_TIMES);
     printf("Long key service times\n");
+    printf("avg: %ld\n", sum_times / NB_TIMES);
     printf("p50: %ld\n", times[(int)(NB_TIMES * 0.5)]);
     printf("p90: %ld\n", times[(int)(NB_TIMES * 0.9)]);
     printf("p99: %ld\n", times[(int)(NB_TIMES * 0.99)]);
@@ -8459,8 +8468,10 @@ static void memcached_main(void *arg)
 #endif
 
     /* Create the memory semaphore object */
-    msem = MemSemaphore_GetInstance();
-    BUG_ON(!msem);
+    if (settings.use_msem) {
+        msem = MemSemaphore_GetInstance();
+        BUG_ON(!msem);
+    }
 
     BUG_ON(!settings.udpport && !settings.port);
 

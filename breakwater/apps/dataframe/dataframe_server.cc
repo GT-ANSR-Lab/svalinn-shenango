@@ -416,7 +416,9 @@ void DataFrameServerMain(void *arg) {
     DataFrameInit();
 
     // Create the memory semaphore object
-    g_msem = MemSemaphore::GetInstance();
+    if (g_settings.use_msem) {
+        g_msem = MemSemaphore::GetInstance();
+    }
 
     // Start the RPC server
     ret = rpc::RpcServerEnable(DataFrameRequestHandler);

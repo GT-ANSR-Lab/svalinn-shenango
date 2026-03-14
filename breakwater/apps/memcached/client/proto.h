@@ -94,7 +94,7 @@ void ntoh(struct MemcachedRespHdr *hdr) {
 
 ssize_t ConstructMemcachedSetReq(
     char* _buf, int _buflen, uint32_t _id, const char *_key, uint16_t _key_len,
-    const char *_value, uint32_t _value_len) {
+    const char *_value, uint32_t _value_len, bool is_skey) {
   char *buf = _buf;
   struct MemcachedReqHdr *hdr;
   uint32_t body_len = 8 + _key_len + _value_len;
@@ -113,6 +113,7 @@ ssize_t ConstructMemcachedSetReq(
   hdr->total_body_length = body_len;
   hdr->opaque = _id;
   hdr->cas = 0;
+  hdr->is_skey = (uint64_t)is_skey;
   buf += sizeof(struct MemcachedReqHdr);
 
   /* extra field: Flag (4), Expiration (4) */
