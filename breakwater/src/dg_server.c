@@ -101,9 +101,9 @@ struct sdg_session {
 };
 
 /* credit-related stats */
-atomic64_t srpc_stat_req_rx_;
-atomic64_t srpc_stat_req_dropped_;
-atomic64_t srpc_stat_resp_tx_;
+static atomic64_t srpc_stat_req_rx_;
+static atomic64_t srpc_stat_req_dropped_;
+static atomic64_t srpc_stat_resp_tx_;
 
 #if SDG_TS_OUT
 static void printRecord()

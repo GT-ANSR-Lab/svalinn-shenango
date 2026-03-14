@@ -173,6 +173,13 @@ int cdg_add_connection(struct crpc_session *s_, struct netaddr raddr)
 	if (ret)
 		return ret;
 
+	/* send session info */
+	struct rpc_session_info info;
+	info.session_type = s->cmn.session_type;
+	ret = tcp_write_full(c, &info, sizeof(info));
+	if (unlikely(ret < 0))
+		return ret;
+
 	/* alloc conn */
 	cc = smalloc(sizeof(*cc));
 	if (!cc) {

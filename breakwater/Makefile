@@ -3,6 +3,10 @@ include $(ROOT_PATH)/build/shared.mk
 
 CFLAGS += -I$(ROOT_PATH)/breakwater/inc
 
+CFLAGS += -I$(ROOT_PATH)/m-semaphore/inc
+CFLAGS += -I$(ROOT_PATH)/m-semaphore/bindings
+CFLAGS += -I$(ROOT_PATH)/m-semaphore/deps/pcm/src
+
 # breakwater - RPC layer with server overload control
 breakwater_src = $(wildcard src/*.c)
 breakwater_obj = $(breakwater_src:.c=.o)

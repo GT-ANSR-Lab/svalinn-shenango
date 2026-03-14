@@ -22,8 +22,15 @@
 #include "pcc_proto.h"
 #include "pcc_config.h"
 
-/* Enable PCC debug logs */
-#define SPCC_CTL_DEBUG      0
+/* PCC controller-specific definitions */
+#define SPCC_DEBUG              0
+
+/* Helper to print debug logs */
+#if SPCC_DEBUG == 1
+#define SPCC_DEBUG_LOG(...) printf(__VA_ARGS__)
+#else
+#define SPCC_DEBUG_LOG(...)
+#endif
 
 /* time-series output */
 #define SPCC_TS_OUT         false
@@ -162,98 +169,55 @@ static uint64_t                 srpc_pcc_next_update;
 /* State of the PCC controller. */
 static enum spcc_ctl_state      srpc_pcc_state;
 
-/* A floating point credit pool value representing the accepted and currently set
- * credit pool value. We already have srpc_credit_pool which stores the credit
- * pool value using an integer. We use this additional floating point value to
- * keep track of partial credits that were added or deducted during the control.
- * Using integer credit pool results in losing those small partial credits and
- * might lead to incorrect results.
- */
-static double                   srpc_pcc_curr_cp;
-
-/* During the decision making state, this will be set to SPCC_DIR_BASE. At
- * the end of the decision making state either SPCC_DIR_INCR or SPCC_DIR_DECR
- * will be picked. And in the rate adjusting state, the same value will be
- * carried forward, until we enter decision making state again.
- */
-static enum spcc_dir            srpc_pcc_dir;
-
-/* Confidence value in the selected direction. This value is used to rapdily
- * increase/decrease the credit pool size while the controller is in the
- * rate adjusting state. Higher the value, higher the confidence the controller
- * has in the currently picked direction.
- */
-static uint64_t                 srpc_pcc_n;
-
-/* Rate change percentage, i.e., amount by which we perform credit pool
- * increase/decrease in every monitor interval. This value is used only in the
- * decision making state. This value can vary from SPCC_EPSILON_MIN to
- * SPCC_EPSILON_MAX.
- */
-static double                   srpc_pcc_epsilon;
-
-/* The utility value obtained in the previous decision making state or the
- * previous rate adjusting state. At the end of the decision making state
- * the controller sets this to the average utility across all repetitions
- * of the optimal direction (increase or decrease). At the end of rate adjusting
- * state, if we picked the new rate in the same direction, we set utility
- * of the new rate here.
- */
-static double                   srpc_pcc_prev_util;
-
-/* An array of directions used to decide whether to increase the rate or
- * decrease the rate while the controller is in the decision making state. This
- * is an array of +1(s) and -1(s), with a 0 at the end. There are SRPC_REPS
- * number of +1(s) and SRPC_REPS number of -1(s) in this array. This array
- * is randomly shuffled to randomize the order in which we perform the
- * microexperiments in the decision making state. Note, the 0 should always
- * appear at the end of the array.
- */
-static enum spcc_dir            srpc_pcc_dirs[2 * SPCC_REPS + 1];
-/* Index into the array of directions. Used in the decision making state to
- * keep track of which microexperiments are yet to be performed.
- */
-static int                      srpc_pcc_dirs_idx;
-
-/* Per-microexperiment performance statistics. Each microexperiment will
- * have one entry in these stats tables to populate the performance stats
- * observed during its monitor interval.
+/* Per microexperiment performance statistics.
  *
  * The first element of the array (index 0) is not used by any microexperiment.
  * It is the default entry used by the program to update the stats if no
- * microexperiment is running.
- *
- * The first SPCC_REPS (index 1 to SPCC_REPS) entries are used by the rate
- * increase microexperiments. The last SPCC_REPS (index SPCC_REPS+1 to 2*SPCC_REPS)
- * entries are used by the rate decrease microexperiments.
+ * microexperiment is running. The next two elements in the array (index 1
+ * and 2) are reserved for the two microexperiment.
  *
  * As of now four values are recorded for every microexperiment:
  *   1) Input requests received
  *   2) Output responses sent
  *   3) Dropped requests
- *   4) Processed packets (output + dropped)
- *   5) Start timestamp of the monitor interval
- *   6) End timestamp of the monitor interval
- *   7) Queueing delay sample during the monitor interval
+ *   4) Start timestamp of the monitor interval
+ *   5) End timestamp of the monitor interval
+ *   6) Max queueing delay observed during the monitor interval
  */
-static atomic64_t               srpc_pcc_in_cnts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_proc_cnts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_out_cnts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_drop_cnts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_start_ts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_end_ts[2 * SPCC_REPS + 1];
-static atomic64_t               srpc_pcc_qdelays[2 * SPCC_REPS + 1];
-/* The stat index is set by the controller to direct the worker threads
- * to update the correct stat entries while a microexperiment is running.
- */
-static int                      srpc_pcc_stat_idx;
+static atomic64_t               srpc_pcc_in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
 
-/* Variables keeping track of the how many rate increase and rate decrease
- * microexperiment repetitions have been performed while the controller is in
- * the decision making state.
+/* Currently running microexperiment ID. Used to index in the stats arrays
+ * described above. */
+static int                      srpc_pcc_micro_exp_id;
+
+/* The number of microexperiments performed till now. Only two microexperiments
+ * are performed by the PCC controller. */
+static int                      srpc_pcc_num_micro_exps;
+
+/* The direction of change for each microexperiment. We want to perform the two
+ * microexperiments in random order. Before starting the first microexperiment,
+ * this array is filled with directions of credit pool change in a random order.
+ * This array is indexed using the microexperiment ID. Value at index 0 is ignored.
  */
-static int                      srpc_pcc_curr_incr_rep_cnt;
-static int                      srpc_pcc_curr_decr_rep_cnt;
+static int                      srpc_pcc_micro_exp_dirs[SPCC_MAX_NUM_MICRO_EXPS+1];
+
+/* The original credit pool value, before we start performing the
+ * microexperiments. */
+static int                      srpc_pcc_orig_cp;
+
+
+/* Helper to randomly initialize the microexperiment directions */
+static inline void srpc_pcc_gen_micro_exp_dirs() {
+
+    int do_incr = rand() % 2;
+    srpc_pcc_micro_exp_dirs[1] = (do_incr) ? 1 : -1;
+    srpc_pcc_micro_exp_dirs[2] = -srpc_pcc_micro_exp_dirs[1];
+}
 
 
 #if SPCC_TS_OUT
@@ -420,6 +384,7 @@ static int srpc_send_completion_vector(struct spcc_session *s,
     return 0;
 }
 
+
 static void srpc_update_credit(struct spcc_session *s, bool req_dropped)
 {
     int credit_pool = atomic_read(&srpc_credit_pool);
@@ -447,6 +412,13 @@ static void srpc_update_credit(struct spcc_session *s, bool req_dropped)
     } else if (credit_used > credit_pool) {
         s->credit--;
     }
+
+	if (s->wake_up || num_sess <= runtime_max_cores())
+		s->credit = MAX(s->credit, max_overprovision);
+
+	// prioritize the session
+	if (old_credit > 0 && s->credit == 0 && !req_dropped)
+		s->credit = max_overprovision;
 
     /* clamp to supported values */
     /* now we allow zero credit */
@@ -631,26 +603,73 @@ static void wakeup_drained_session(int num_session)
     }
 }
 
-
-/* Function to randomly shuffle the order in which we will test the rate
- * increases and decreases in decision making state.
+/*
+ * Decrement credit pool by epsilon. Returns the new value
+ * of the credit pool after decrementing. Does not update
+ * the actual credit pool.
  */
-static inline void srpc_pcc_dirs_shuffle() {
-    for (int i = 2 * SPCC_REPS - 1; i > 0; --i) {
-        int j = rand() % (i + 1);
-        enum spcc_dir temp = srpc_pcc_dirs[i];
-        srpc_pcc_dirs[i] = srpc_pcc_dirs[j];
-        srpc_pcc_dirs[j] = temp;
-    }
+static int decr_credit_pool()
+{
+    int num_sess = atomic_read(&srpc_num_sess);
+    int curr_cp = atomic_read(&srpc_credit_pool);
+    int new_cp;
+
+    new_cp = curr_cp - SPCC_EPSILON;
+	new_cp = MAX(new_cp, runtime_max_cores());
+	new_cp = MIN(new_cp, num_sess << SPCC_MAX_WINDOW_EXP);
+
+    SPCC_DEBUG_LOG("[%ld] Decreased credit pool: %d -> %d\n",
+                   microtime(), curr_cp, new_cp);
+
+	return new_cp;
 }
+
+/*
+ * Increment credit pool by epsilon. Returns the new value
+ * of the credit pool after incrementing. Does not update
+ * the actual credit pool.
+ */
+static int incr_credit_pool()
+{
+    int num_sess = atomic_read(&srpc_num_sess);
+    int curr_cp = atomic_read(&srpc_credit_pool);
+    int new_cp;
+
+    new_cp = curr_cp + SPCC_EPSILON;
+	new_cp = MAX(new_cp, runtime_max_cores());
+	new_cp = MIN(new_cp, num_sess << SPCC_MAX_WINDOW_EXP);
+
+    SPCC_DEBUG_LOG("[%ld] Increased credit pool: %d -> %d\n",
+                   microtime(), curr_cp, new_cp);
+
+	return new_cp;
+}
+
+/*
+ * Either increment or decrement the credit pool based on the
+ * provided direction. @dir should either be 1 for incrementing
+ * and -1 for decrementing the credit pool.
+ */
+static int update_credit_pool(int dir)
+{
+    assert(dir == 1 || dir == -1);
+
+    int num_sess = atomic_read(&srpc_num_sess);
+    int curr_cp = atomic_read(&srpc_credit_pool);
+    int new_cp;
+
+    new_cp = curr_cp + dir * SPCC_EPSILON;
+	new_cp = MAX(new_cp, runtime_max_cores());
+	new_cp = MIN(new_cp, num_sess << SPCC_MAX_WINDOW_EXP);
+
+	return new_cp;
+}
+
 
 /**
  * PCC control implementation details:
  *
- * This code implements PCC-Allegro's control logic as described in -
- * https://www.usenix.org/system/files/conference/nsdi15/nsdi15-paper-dong.pdf
- *
- * Unlike original PCC-Allegro, this implementation is designed for RPC-layer
+ * Unlike original PCC, this implementation is designed for RPC-layer
  * communication, instead of TCP-layer communication. And this implementation
  * implements a receiver-driven control, instead of the traditional sender-based
  * control. The controller uses PCC-like logic to modulate the RPC credit pool
@@ -666,25 +685,22 @@ static inline void srpc_pcc_dirs_shuffle() {
 static void srpc_update_credit_pool()
 {
     uint64_t now;
-    double curr_cp;
-    double delta_cp;
     int new_cp;
     int credit_used;
     int credit_unused;
-    enum spcc_dir dir;
-    int stat_idx;
-    int in_cnts[2 * SPCC_REPS + 1];
-    int proc_cnts[2 * SPCC_REPS + 1];
-    int out_cnts[2 * SPCC_REPS + 1];
-    int drop_cnts[2 * SPCC_REPS + 1];
-    int start_ts[2 * SPCC_REPS + 1];
-    int end_ts[2 * SPCC_REPS + 1];
-    int qdelays[2 * SPCC_REPS + 1];
-    double utils[2 * SPCC_REPS + 1];
-    bool wait_more;
-    int incr_better_cnt;
-    int decr_better_cnt;
+    int micro_exp_id;
+    int in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    int out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    int drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    int start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    int end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    int qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
+    double utils[SPCC_MAX_NUM_MICRO_EXPS+1];
     bool do_wakeup;
+#if SPCC_MICRO_EXP_STRICT_LABELLING == 1
+    int plus_micro_exp_id;
+    int minus_micro_exp_id;
+#endif
 
     if (!spin_try_lock_np(&srpc_pcc_lock)) {
         return;
@@ -702,502 +718,170 @@ static void srpc_update_credit_pool()
 
     /* Drive the state machine */
     switch (srpc_pcc_state) {
-    case SPCC_CTL_STATE_DECISION_MAKING_SET_RATE:
+    case SPCC_CTL_STATE_PREPARE_MICRO_EXP:
 
-        assert(srpc_pcc_dir == SPCC_DIR_BASE);
+        /* Get the microexperiment index */
+        assert(srpc_pcc_num_micro_exps < SPCC_MAX_NUM_MICRO_EXPS);
+        micro_exp_id = srpc_pcc_num_micro_exps + 1;
 
-        /* Update the rate */
-        curr_cp = srpc_pcc_curr_cp;
-        dir = srpc_pcc_dirs[srpc_pcc_dirs_idx];
-        new_cp = curr_cp + dir * srpc_pcc_epsilon;
-        new_cp = MAX(new_cp, runtime_max_cores());
-        new_cp = MIN(new_cp, atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP);
+#if SPCC_MICRO_EXP_PERTURB_CB == 1
+        /* Update the credit pool for the microexperiment */
+        new_cp = update_credit_pool(srpc_pcc_micro_exp_dirs[micro_exp_id]);
         atomic_write(&srpc_credit_pool, new_cp);
-
-        /* Wake up drained sessions */
         do_wakeup = true;
+#endif
 
-        if (dir == SPCC_DIR_BASE) {
-            /* Stop */
-            srpc_pcc_stat_idx = 0;
-            srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_END;
-            srpc_pcc_next_update = 0; /* move immediately */
+        /* Update the state */
+        srpc_pcc_state = SPCC_CTL_STATE_START_MICRO_EXP;
+        srpc_pcc_next_update = microtime() + SPCC_PRE_MI_US;
+
+        SPCC_DEBUG_LOG("[%ld] Prepared microexperiment %d (dir=%d)\n",
+                       now, micro_exp_id, srpc_pcc_micro_exp_dirs[micro_exp_id]);
+
+        break;
+    case SPCC_CTL_STATE_START_MICRO_EXP:
+
+        /* Get the microexperiment index */
+        assert(srpc_pcc_num_micro_exps < SPCC_MAX_NUM_MICRO_EXPS);
+        micro_exp_id = srpc_pcc_num_micro_exps + 1;
+
+        /* Clear the stats */
+        atomic64_write(&srpc_pcc_in_cnts[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_out_cnts[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_drop_cnts[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_qdelays[micro_exp_id], runtime_queue_us());
+
+        /* Set the start time for the monitor interval */
+        atomic64_write(&srpc_pcc_start_ts[micro_exp_id], microtime());
+        atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
+
+        /* Set the stat index for the workers to use */
+        srpc_pcc_micro_exp_id = micro_exp_id;
+
+        /* Update the state */
+        srpc_pcc_state = SPCC_CTL_STATE_END_MICRO_EXP;
+        srpc_pcc_next_update = microtime() + SPCC_MI_US;
+
+        SPCC_DEBUG_LOG("[%ld] Started microexperiment %d (dir=%d)\n",
+                       now, micro_exp_id, srpc_pcc_micro_exp_dirs[micro_exp_id]);
+
+        break;
+    case SPCC_CTL_STATE_END_MICRO_EXP:
+
+        SPCC_DEBUG_LOG("[%ld] Finished microexperiment %d (dir=%d)\n",
+                       now, srpc_pcc_micro_exp_id,
+                       srpc_pcc_micro_exp_dirs[srpc_pcc_micro_exp_id]);
+
+        // Stop the microexperiment
+        srpc_pcc_micro_exp_id = 0;
+        srpc_pcc_num_micro_exps++;
+
+        /* Perform the remaining microexperiments, if any */
+        if (srpc_pcc_num_micro_exps < SPCC_MAX_NUM_MICRO_EXPS) {
+            srpc_pcc_state = SPCC_CTL_STATE_PREPARE_MICRO_EXP;
+            srpc_pcc_next_update = microtime(); /* move immediately */
             break;
         }
 
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_START_MONITOR;
-        srpc_pcc_next_update = microtime() + SPCC_PRE_MI_US;
+        /* We have performed all the microexperiments */
+        SPCC_DEBUG_LOG("[%ld] Performed all microexperiments\n", now);
 
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - DECISION_MAKING_SET_RATE -"
-               " rep_idx=%d, dir=%d, curr_cp=%lf, new_cp=%d\n",
-               now, srpc_pcc_dirs_idx, dir, curr_cp, new_cp);
+#if SPCC_MICRO_EXP_PERTURB_CB == 1
+        /* Reset the rate */
+        atomic_write(&srpc_credit_pool, srpc_pcc_orig_cp);
+        do_wakeup = true;
 #endif
+
+        /* Update state */
+        srpc_pcc_state = SPCC_CTL_STATE_MAKE_DECISION;
+        srpc_pcc_next_update = microtime(); /* move immediately */
 
         break;
-    case SPCC_CTL_STATE_DECISION_MAKING_START_MONITOR:
+    case SPCC_CTL_STATE_MAKE_DECISION:
 
-        /* Get the stat index */
-        dir = srpc_pcc_dirs[srpc_pcc_dirs_idx];
-        assert(dir != SPCC_DIR_BASE);
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - DECISION_MAKING_START_MONITOR -"
-               " rep_idx=%d, dir=%d\n",
-               now, srpc_pcc_dirs_idx, dir);
-#endif
-
-        if (dir == SPCC_DIR_INCR) {
-            srpc_pcc_curr_incr_rep_cnt++;
-            stat_idx = srpc_pcc_curr_incr_rep_cnt;
-        } else if (dir == SPCC_DIR_DECR) {
-            srpc_pcc_curr_decr_rep_cnt++;
-            stat_idx = srpc_pcc_curr_decr_rep_cnt + SPCC_REPS;
-        }
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - DECISION_MAKING_START_MONITOR -"
-               " stat_idx=%d\n", now, stat_idx);
-#endif
-
-        /* Clear the stats */
-        atomic64_write(&srpc_pcc_in_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_out_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_drop_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_proc_cnts[stat_idx], 0);
-
-        /* Set the start time for the monitor interval */
-        atomic64_write(&srpc_pcc_start_ts[stat_idx], microtime());
-        atomic64_write(&srpc_pcc_end_ts[stat_idx], microtime());
-
-        /* Set the stat index for the workers to use */
-        srpc_pcc_stat_idx = stat_idx;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_END_MONITOR;
-        srpc_pcc_next_update = microtime() + SPCC_MI_US;
-
-        break;
-    case SPCC_CTL_STATE_DECISION_MAKING_END_MONITOR:
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - DECISION_MAKING_END_MONITOR -"
-               " stat_idx=%d\n", now, srpc_pcc_stat_idx);
-#endif
-
-        /* Update stats, if any */
-        atomic64_write(&srpc_pcc_qdelays[srpc_pcc_stat_idx], runtime_queue_us());
-
-        srpc_pcc_stat_idx = 0;
-        srpc_pcc_dirs_idx++;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-        srpc_pcc_next_update = 0; /* move immediately */
-
-        break;
-    case SPCC_CTL_STATE_DECISION_MAKING_END:
-
-        /* Wait for the monitor interval results to accumulate */
-        wait_more = false;
-        for (int i = 1; i < 2 * SPCC_REPS + 1; ++i) {
+        /* Calculate the utilities for each microexperiment */
+        for (int i = 1; i <= SPCC_MAX_NUM_MICRO_EXPS; ++i) {
+            /* Read the performance stat */
             in_cnts[i] = atomic64_read(&srpc_pcc_in_cnts[i]);
-            proc_cnts[i] = atomic64_read(&srpc_pcc_proc_cnts[i]);
-            if (proc_cnts[i] < in_cnts[i]) {
-                /* We need to wait more */
-                wait_more = true;
-                break;
-            }
             out_cnts[i] = atomic64_read(&srpc_pcc_out_cnts[i]);
             drop_cnts[i] = atomic64_read(&srpc_pcc_drop_cnts[i]);
             start_ts[i] = atomic64_read(&srpc_pcc_start_ts[i]);
             end_ts[i] = atomic64_read(&srpc_pcc_end_ts[i]);
             qdelays[i] = atomic64_read(&srpc_pcc_qdelays[i]);
-        }
-        if (wait_more) {
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - DECISION_MAKING_END - Need to wait more\n", now);
-#endif
-            srpc_pcc_next_update = microtime() + SPCC_RTT_US;
-            break;
-        }
 
-        /* Calculate the utilities */
-        for (int i = 1; i < 2 * SPCC_REPS + 1; ++i) {
+            /* Compute the operator-defined utility */
             utils[i] = spcc_util_fn(in_cnts[i], out_cnts[i], drop_cnts[i],
                                     qdelays[i], end_ts[i] - start_ts[i]);
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - DECISION_MAKING_END -"
-                   " stat_idx=%d, in_cnt=%d, proc_cnt=%d,"
-                   " out_cnt=%d, drop_cnt=%d, qdelay=%d, duration=%d,"
-                   " utility=%lf\n",
-                   now, i, in_cnts[i], proc_cnts[i], out_cnts[i],
-                   drop_cnts[i], qdelays[i], end_ts[i] - start_ts[i], utils[i]);
-#endif
+
+            SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_cnts=%ld, out_cnts=%ld,"
+                           " drop_cnts=%ld, qdelay=%ld, duration=%ld -> utility=%lf\n",
+                           now, i, in_cnts[i], out_cnts[i], drop_cnts[i], qdelays[i],
+                           end_ts[i] - start_ts[i], utils[i]);
         }
+
+        /* Get the current credit pool size */
+        new_cp = atomic_read(&srpc_credit_pool);
+
+#if SPCC_MICRO_EXP_STRICT_LABELLING == 1
+        /* Under strict labelling, (+) microexperiment should receive more
+         * load (i.e., input packets) than (-) microexperiment)
+         */
+        plus_micro_exp_id = (srpc_pcc_micro_exp_dirs[1] == 1) ? 1 : 2;
+        minus_micro_exp_id = (srpc_pcc_micro_exp_dirs[1] == -1) ? 1 : 2;
+        if (in_cnts[plus_micro_exp_id] <= in_cnts[minus_micro_exp_id]) {
+            SPCC_DEBUG_LOG("[%ld] Inconclusive experiments. Microexperiment %d "
+                           "(dir=1) received less load than microexperiment %d "
+                           "(dir=-1)\n", now, plus_micro_exp_id, minus_micro_exp_id);
+            goto skip_make_decision;
+        }
+#endif
 
         /* Compare the utilities */
-        incr_better_cnt = 0;
-        decr_better_cnt = 0;
-        for (int i = 1; i < SPCC_REPS + 1; ++i) {
-            for (int j = SPCC_REPS + 1; j < 2 * SPCC_REPS + 1; ++j) {
-                /* Check if the increase test received more requests than the
-                 * decrease test. This is crucial to ensure that we are testing
-                 * receiving more requests vs receiving less requests. If it
-                 * is not the case, then the tests are inconclusive.
-                 */
-                if (in_cnts[i] <= in_cnts[j]) {
-                    goto inconclusive;
-                }
+        if (in_cnts[1] > in_cnts[2]) {
+            /* If the received input requests (proxy for load) is more in the first
+              microexperiment than the second microexperiment.*/
+            SPCC_DEBUG_LOG("[%ld] Microexperiment 1 (dir=%d) received more"
+                           " load than 2 (dir=%d)\n", now,
+                           srpc_pcc_micro_exp_dirs[1], srpc_pcc_micro_exp_dirs[2]);
 
-                /* If we did not receive any packets in either increase or
-                 * decrease phase then probably we are congested, so reduce
-                 * the rate.
-                 */
-                if (!in_cnts[i] || !in_cnts[j]) {
-                    decr_better_cnt = SPCC_REPS * SPCC_REPS;
-                    goto conclusive;
-                }
-
-                double incr_util = utils[i];
-                double decr_util = utils[j];
-                if (incr_util > decr_util) {
-                    ++incr_better_cnt;
-                } else if (incr_util < decr_util) {
-                    ++decr_better_cnt;
-                } else {
-                    goto inconclusive;
-                }
+            if (utils[1] > utils[2]) {
+                /* More load, gave better utility, so increase the credit pool size */
+                new_cp = incr_credit_pool();
+            } else {
+                /* Less load, gave better or equal utility, so decrease the credit pool size */
+                new_cp = decr_credit_pool();
             }
+        } else if (in_cnts[2] > in_cnts[1]) {
+            /* If the received input requests (proxy for load) is more in the second
+              microexperiment than the first microexperiment.*/
+            SPCC_DEBUG_LOG("[%ld] Microexperiment 2 (dir=%d) received more"
+                           " load than 1 (dir=%d)\n", now,
+                           srpc_pcc_micro_exp_dirs[2], srpc_pcc_micro_exp_dirs[1]);
+
+            if (utils[2] > utils[1]) {
+                /* More load, gave better utility, so increase the credit pool size */
+                new_cp = incr_credit_pool();
+            } else {
+                /* Less load, gave better or equal utility, so decrease the credit pool size */
+                new_cp = decr_credit_pool();
+            }
+        } else {
+            /* Received the same number of input requests in both the microexperiments */
+            SPCC_DEBUG_LOG("[%ld] Both microexperiments experienced same load\n", now);
         }
 
-    conclusive:
-        if (incr_better_cnt == SPCC_REPS * SPCC_REPS) {
-            /* If rate increase was consistently better */
-
-            /* Update the rate */
-            curr_cp = srpc_pcc_curr_cp;
-            curr_cp = curr_cp + srpc_pcc_epsilon;
-            curr_cp = MAX(curr_cp, (double)runtime_max_cores());
-            curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
-            srpc_pcc_curr_cp = curr_cp;
-            new_cp = (int)curr_cp;
-            atomic_write(&srpc_credit_pool, new_cp);
-
-            /* Wake up drained sessions */
-            do_wakeup = true;
-
-#if SPCC_RATE_ADJUSTING_STATE_ENABLED == 0
-            /* Move back to the decision making state */
-            srpc_pcc_dir = SPCC_DIR_BASE;
-            srpc_pcc_n = 0;
-            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-            srpc_pcc_dirs_shuffle();
-            srpc_pcc_dirs_idx = 0;
-            srpc_pcc_curr_incr_rep_cnt = 0;
-            srpc_pcc_curr_decr_rep_cnt = 0;
-            srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-            srpc_pcc_next_update = 0; /* move immediately */
-#else
-            /* Move to the rate adjusting state */
-
-            /* Set the direction */
-            srpc_pcc_dir = SPCC_DIR_INCR;
-            srpc_pcc_n = 1;
-            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-
-            /* Set the utility to average of all rate increase experiments */
-            srpc_pcc_prev_util = 0.0;
-            for (int i = 1; i < SPCC_REPS + 1; ++i) {
-                srpc_pcc_prev_util += utils[i];
-            }
-            srpc_pcc_prev_util /= SPCC_REPS;
-
-            /* Update the state */
-            srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE;
-            srpc_pcc_next_update = 0; /* move immediately */
-#endif
-
-
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - DECISION_MAKING_END -"
-                   " Rate Increased - new_cp=%lf\n", now, curr_cp);
-#endif
-
-            break;
-
-        } else if (decr_better_cnt == SPCC_REPS * SPCC_REPS) {
-            /* If rate decrease was consistently better */
-
-            /* Update the rate */
-            curr_cp = srpc_pcc_curr_cp;
-            curr_cp = curr_cp - srpc_pcc_epsilon;
-            curr_cp = MAX(curr_cp, (double)runtime_max_cores());
-            curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
-            srpc_pcc_curr_cp = curr_cp;
-            new_cp = (int)curr_cp;
-            atomic_write(&srpc_credit_pool, new_cp);
-
-            /* Wake up drained sessions */
-            do_wakeup = true;
-
-#if SPCC_RATE_ADJUSTING_STATE_ENABLED == 0
-            /* Move back to the decision making state */
-            srpc_pcc_dir = SPCC_DIR_BASE;
-            srpc_pcc_n = 0;
-            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-            srpc_pcc_dirs_shuffle();
-            srpc_pcc_dirs_idx = 0;
-            srpc_pcc_curr_incr_rep_cnt = 0;
-            srpc_pcc_curr_decr_rep_cnt = 0;
-            srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-            srpc_pcc_next_update = 0; /* move immediately */
-
-#else
-            /* Move to the rate adjusting state */
-
-            /* Set the direction */
-            srpc_pcc_dir = SPCC_DIR_DECR;
-            srpc_pcc_n = 1;
-            srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-
-            /* Set the utility to average of all rate decrease experiments */
-            srpc_pcc_prev_util = 0.0;
-            for (int i = SPCC_REPS + 1; i < 2 * SPCC_REPS + 1; ++i) {
-                srpc_pcc_prev_util += utils[i];
-            }
-            srpc_pcc_prev_util /= SPCC_REPS;
-
-            /* Update the state */
-            srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE;
-            srpc_pcc_next_update = 0; /* move immediately */
-
-#endif
-
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - DECISION_MAKING_END -"
-                   " Rate Decreased - new_cp=%lf\n", now, curr_cp);
-#endif
-
-            break;
-        }
-
-        /* The tests were inconclusive */
-    inconclusive:
-
-        /* Increase the rate change granularity */
-        srpc_pcc_epsilon = MIN(srpc_pcc_epsilon + SPCC_EPSILON_MIN, SPCC_EPSILON_MAX);
-
-        /* Reset the decision making state */
-        srpc_pcc_dirs_shuffle();
-        srpc_pcc_dirs_idx = 0;
-        srpc_pcc_curr_incr_rep_cnt = 0;
-        srpc_pcc_curr_decr_rep_cnt = 0;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-        srpc_pcc_next_update = 0; /* move immediately */
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - DECISION_MAKING_END - Inconclusive\n", now);
-#endif
-
-        break;
-    case SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE:
-
-        assert(srpc_pcc_dir != SPCC_DIR_BASE);
-
-        /* Update the rate in the same direction */
-        curr_cp = srpc_pcc_curr_cp;
-        delta_cp = (double)srpc_pcc_n * SPCC_EPSILON_MIN;
-        delta_cp = MIN(delta_cp, SPCC_EPSILON_MAX);
-        new_cp = curr_cp + srpc_pcc_dir * delta_cp;
-        new_cp = MAX(new_cp, runtime_max_cores());
-        new_cp = MIN(new_cp, atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP);
+        /* Update the rate */
         atomic_write(&srpc_credit_pool, new_cp);
-
-        /* Wake up drained sessions */
         do_wakeup = true;
 
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_START_MONITOR;
-        srpc_pcc_next_update = microtime() + SPCC_PRE_MI_US;
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - RATE_ADJUSTING_SET_RATE -"
-               " dir=%d, n=%ld, curr_cp=%lf, new_cp=%d\n",
-               now, srpc_pcc_dir, srpc_pcc_n, curr_cp, new_cp);
-#endif
-
-        break;
-    case SPCC_CTL_STATE_RATE_ADJUSTING_START_MONITOR:
-
-        /* Get the stat index */
-        if (srpc_pcc_dir == SPCC_DIR_INCR) {
-            stat_idx = 1;
-        } else if (srpc_pcc_dir == SPCC_DIR_DECR) {
-            stat_idx = SPCC_REPS + 1;
-        }
-
-        /* Clear the stats */
-        atomic64_write(&srpc_pcc_in_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_out_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_drop_cnts[stat_idx], 0);
-        atomic64_write(&srpc_pcc_proc_cnts[stat_idx], 0);
-
-        /* Set the start time for the monitor interval */
-        atomic64_write(&srpc_pcc_start_ts[stat_idx], microtime());
-        atomic64_write(&srpc_pcc_end_ts[stat_idx], microtime());
-
-        /* Set the stat index for the workers to use */
-        srpc_pcc_stat_idx = stat_idx;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_END_MONITOR;
-        srpc_pcc_next_update = microtime() + SPCC_MI_US;
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - RATE_ADJUSTING_UPDATE_MONITOR -"
-               " dir=%d, n=%ld\n", now, srpc_pcc_dir, srpc_pcc_n);
-#endif
-
-        break;
-    case SPCC_CTL_STATE_RATE_ADJUSTING_END_MONITOR:
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - RATE_ADJUSTING_END_MONITOR -"
-               " stat_idx=%d\n", now, srpc_pcc_stat_idx);
-#endif
-
-        /* Update stats, if any */
-        atomic64_write(&srpc_pcc_qdelays[srpc_pcc_stat_idx], runtime_queue_us());
-
-        srpc_pcc_stat_idx = 0;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_RESET_RATE;
-        srpc_pcc_next_update = 0; /* move immediately */
-
-        break;
-    case SPCC_CTL_STATE_RATE_ADJUSTING_RESET_RATE:
-
-        /* Update the rate to base */
-        curr_cp = srpc_pcc_curr_cp;
-        new_cp = (int)curr_cp;
-        new_cp = MAX(new_cp, runtime_max_cores());
-        new_cp = MIN(new_cp, atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP);
-        atomic_write(&srpc_credit_pool, new_cp);
-
-        /* Wake up drained sessions */
-        do_wakeup = true;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_END;
-        srpc_pcc_next_update = 0; /* move immediately */
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - RATE_ADJUSTING_RESET_RATE -"
-               " dir=%d, n=%ld, curr_cp=%lf, new_cp=%d\n",
-               now, srpc_pcc_dir, srpc_pcc_n, curr_cp, new_cp);
-#endif
-
-        break;
-    case SPCC_CTL_STATE_RATE_ADJUSTING_END:
-
-        /* Get the stat index where we have to look for the results */
-        if (srpc_pcc_dir == SPCC_DIR_INCR) {
-            stat_idx = 1;
-        } else if (srpc_pcc_dir == SPCC_DIR_DECR) {
-            stat_idx = SPCC_REPS + 1;
-        }
-
-        /* If we have not yet received the monitor interval worth of results */
-        in_cnts[stat_idx] = atomic64_read(&srpc_pcc_in_cnts[stat_idx]);
-        proc_cnts[stat_idx] = atomic64_read(&srpc_pcc_proc_cnts[stat_idx]);
-        if (proc_cnts[stat_idx] < in_cnts[stat_idx]) {
-            /* We need to wait more */
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - RATE_ADJUSTING_END - Need to wait more\n", now);
-#endif
-            srpc_pcc_next_update = microtime() + SPCC_RTT_US;
-            break;
-        }
-        out_cnts[stat_idx] = atomic64_read(&srpc_pcc_out_cnts[stat_idx]);
-        drop_cnts[stat_idx] = atomic64_read(&srpc_pcc_drop_cnts[stat_idx]);
-        start_ts[stat_idx] = atomic64_read(&srpc_pcc_start_ts[stat_idx]);
-        end_ts[stat_idx] = atomic64_read(&srpc_pcc_end_ts[stat_idx]);
-        qdelays[stat_idx] = atomic64_read(&srpc_pcc_qdelays[stat_idx]);
-
-        /* Calculate the utility for the previous experiment */
-        utils[stat_idx] = spcc_util_fn(in_cnts[stat_idx], out_cnts[stat_idx],
-                                       drop_cnts[stat_idx], qdelays[stat_idx],
-                                       end_ts[stat_idx] - start_ts[stat_idx]);
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - RATE_ADJUSTING_END -"
-                   " in_cnt=%d, proc_cnt=%d,"
-                   " out_cnt=%d, drop_cnt=%d, duration=%d,"
-                   " utility=%lf, prev_utility=%lf\n",
-                   now, in_cnts[stat_idx], proc_cnts[stat_idx],
-                   out_cnts[stat_idx], drop_cnts[stat_idx],
-                   end_ts[stat_idx] - start_ts[stat_idx], utils[stat_idx],
-                   srpc_pcc_prev_util);
-#endif
-
-        /* XXX: We probably need to check if we received more packets, if
-         *      we tested a rate increase, or if we received less packets,
-         *      if we tested a rate decrease. Leaving that for later. */
-
-        /* Compare the utilities */
-        if (utils[stat_idx] >= srpc_pcc_prev_util) {
-            /* Set the rate in the same direction */
-            curr_cp = srpc_pcc_curr_cp;
-            delta_cp = (double)srpc_pcc_n * SPCC_EPSILON_MIN;
-            delta_cp = MIN(delta_cp, SPCC_EPSILON_MAX);
-            curr_cp = curr_cp + srpc_pcc_dir * delta_cp;
-            curr_cp = MAX(curr_cp, (double)runtime_max_cores());
-            curr_cp = MIN(curr_cp, (double)(atomic_read(&srpc_num_sess) << SPCC_MAX_WINDOW_EXP));
-            srpc_pcc_curr_cp = curr_cp;
-            new_cp = (int)curr_cp;
-            atomic_write(&srpc_credit_pool, new_cp);
-
-            /* Wake up drained sessions */
-            do_wakeup = true;
-
-            /* Increase the confidence */
-            ++srpc_pcc_n;
-
-            /* Save the current utility */
-            srpc_pcc_prev_util = utils[stat_idx];
-
-            /* Update the state */
-            srpc_pcc_state = SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE;
-            srpc_pcc_next_update = 0; /* move immediately */
-
-#if SPCC_CTL_DEBUG == 1
-            printf("[%ld] - RATE_ADJUSTING_END -"
-                   " Picked Same Direction - dir=%d, n=%ld, new_cp=%lf\n",
-                   now, srpc_pcc_dir, srpc_pcc_n, curr_cp);
-#endif
-            break;
-        }
-
-        /* The new rate was not better, need to move to decision making state */
-        srpc_pcc_dir = SPCC_DIR_BASE;
-        srpc_pcc_n = 0;
-        srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-        srpc_pcc_dirs_shuffle();
-        srpc_pcc_dirs_idx = 0;
-        srpc_pcc_curr_incr_rep_cnt = 0;
-        srpc_pcc_curr_decr_rep_cnt = 0;
-
-        /* Update the state */
-        srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-        srpc_pcc_next_update = 0; /* move immediately */
-
-#if SPCC_CTL_DEBUG == 1
-        printf("[%ld] - RATE_ADJUSTING_END - Moving to Decision Making\n", now);
-#endif
+    skip_make_decision:
+        /* Move back to the start state */
+        srpc_pcc_num_micro_exps = 0;
+        srpc_pcc_micro_exp_id = 0;
+        srpc_pcc_gen_micro_exp_dirs();
+        srpc_pcc_orig_cp = new_cp;
+        srpc_pcc_state = SPCC_CTL_STATE_PREPARE_MICRO_EXP;
+        srpc_pcc_next_update = microtime(); /* move immediately */
 
         break;
     default:
@@ -1242,6 +926,7 @@ static void srpc_worker(void *arg)
     uint64_t service_time;
     uint64_t avg_st;
     thread_t *th;
+    uint64_t micro_exp_id = c->opaque;
 
     set_rpc_ctx((void *)&c->cmn);
     set_acc_qdel(runtime_queue_us() * cycles_per_us);
@@ -1259,14 +944,25 @@ static void srpc_worker(void *arg)
 
         atomic_write(&srpc_avg_st, avg_st);
         atomic_write(&srpc_credit_ds, c->cmn.ds_credit);
-        atomic64_inc(&srpc_pcc_out_cnts[c->opaque]);
     } else {
         atomic64_inc(&srpc_stat_req_dropped_);
-        atomic64_inc(&srpc_pcc_drop_cnts[c->opaque]);
     }
 
-    atomic64_inc(&srpc_pcc_proc_cnts[c->opaque]);
-    atomic64_write(&srpc_pcc_end_ts[c->opaque], microtime());
+    /* If the microexperiment associated with this request is still running,
+     * then update the performance stats for the microexperiment.
+     */
+    if (srpc_pcc_micro_exp_id == micro_exp_id) {
+        if (!c->cmn.drop) {
+            atomic64_inc(&srpc_pcc_out_cnts[micro_exp_id]);
+        } else {
+            atomic64_inc(&srpc_pcc_drop_cnts[micro_exp_id]);
+        }
+        atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
+        uint64_t qdelay = runtime_queue_us();
+        if (qdelay > atomic64_read(&srpc_pcc_qdelays[micro_exp_id])) {
+            atomic64_write(&srpc_pcc_qdelays[micro_exp_id], qdelay);
+        }
+    }
 
     spin_lock_np(&s->lock);
     bitmap_set(s->completed_slots, c->cmn.idx);
@@ -1291,6 +987,7 @@ static int srpc_recv_one(struct spcc_session *s)
     char buf_tmp[SRPC_BUF_SIZE];
     struct spcc_ctx *c;
     uint64_t us;
+    uint64_t micro_exp_id;
 
 again:
     th = NULL;
@@ -1338,7 +1035,7 @@ again:
         c->cmn.resp_len = 0;
         c->cmn.id = chdr.id;
         c->ts_sent = chdr.ts_sent;
-        c->opaque = (uint64_t)srpc_pcc_stat_idx;
+        c->opaque = micro_exp_id = (uint64_t)srpc_pcc_micro_exp_id;
 
         spin_lock_np(&s->lock);
         old_demand = s->demand;
@@ -1353,11 +1050,13 @@ again:
         }
 
         atomic_inc(&srpc_num_pending);
-        atomic64_inc(&srpc_pcc_in_cnts[c->opaque]);
+        if (srpc_pcc_micro_exp_id == micro_exp_id) {
+            atomic64_inc(&srpc_pcc_in_cnts[micro_exp_id]);
+        }
 
         /* perform AQM */
         us = runtime_queue_us();
-        if (us >= SPCC_DROP_THRESH) {
+        if (us >= SPCC_QDELAY_BUDGET) {
             thread_t *th;
 
             // precedure called when the incoming request is dropped
@@ -1370,9 +1069,13 @@ again:
             if (th)
                 thread_ready(th);
             atomic64_inc(&srpc_stat_req_dropped_);
-            atomic64_inc(&srpc_pcc_drop_cnts[c->opaque]);
-            atomic64_inc(&srpc_pcc_proc_cnts[c->opaque]);
-            atomic64_write(&srpc_pcc_end_ts[c->opaque], microtime());
+            if (srpc_pcc_micro_exp_id == micro_exp_id) {
+                atomic64_inc(&srpc_pcc_drop_cnts[micro_exp_id]);
+                atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
+                if (us > atomic64_read(&srpc_pcc_qdelays[micro_exp_id])) {
+                    atomic64_write(&srpc_pcc_qdelays[micro_exp_id], us);
+                }
+            }
             goto again;
         }
 
@@ -1701,27 +1404,13 @@ static void srpc_listener(void *arg)
 
     /* Init the PCC state. */
     spin_lock_init(&srpc_pcc_lock);
-    srpc_pcc_last_wakeup = microtime();
+    srpc_pcc_state = SPCC_CTL_STATE_PREPARE_MICRO_EXP;
     srpc_pcc_next_update = microtime();
-
-    srpc_pcc_state = SPCC_CTL_STATE_DECISION_MAKING_SET_RATE;
-    srpc_pcc_curr_cp = (double)atomic_read(&srpc_credit_pool);
-
-    srpc_pcc_dir = SPCC_DIR_BASE;
-    srpc_pcc_n = 0;
-    srpc_pcc_epsilon = SPCC_EPSILON_MIN;
-
-    for (int i = 0; i < SPCC_REPS; ++i) {
-        srpc_pcc_dirs[i] = SPCC_DIR_INCR;
-        srpc_pcc_dirs[i + SPCC_REPS] = SPCC_DIR_DECR;
-    }
-    srpc_pcc_dirs[2 * SPCC_REPS]= SPCC_DIR_BASE;
-    srpc_pcc_dirs_shuffle();
-    srpc_pcc_dirs_idx = 0;
-
-    srpc_pcc_stat_idx = 0;
-    srpc_pcc_curr_incr_rep_cnt = 0;
-    srpc_pcc_curr_decr_rep_cnt = 0;
+    srpc_pcc_last_wakeup = microtime();
+    srpc_pcc_micro_exp_id = 0;
+    srpc_pcc_num_micro_exps = 0;
+    srpc_pcc_gen_micro_exp_dirs();
+    srpc_pcc_orig_cp = atomic_read(&srpc_credit_pool);
 
     /* init stats */
     atomic64_write(&srpc_stat_cupdate_rx_, 0);

@@ -41,26 +41,14 @@ struct cpcc_conn {
 
 /* State of the controller. */
 enum spcc_ctl_state {
-    /* Decision making states. */
-    SPCC_CTL_STATE_DECISION_MAKING_SET_RATE,
-    SPCC_CTL_STATE_DECISION_MAKING_START_MONITOR,
-    SPCC_CTL_STATE_DECISION_MAKING_END_MONITOR,
-    SPCC_CTL_STATE_DECISION_MAKING_END,
-
-    /* Rate adjusting states. */
-    SPCC_CTL_STATE_RATE_ADJUSTING_SET_RATE,
-    SPCC_CTL_STATE_RATE_ADJUSTING_START_MONITOR,
-    SPCC_CTL_STATE_RATE_ADJUSTING_END_MONITOR,
-    SPCC_CTL_STATE_RATE_ADJUSTING_RESET_RATE,
-    SPCC_CTL_STATE_RATE_ADJUSTING_END,
+    SPCC_CTL_STATE_PREPARE_MICRO_EXP,
+    SPCC_CTL_STATE_START_MICRO_EXP,
+    SPCC_CTL_STATE_END_MICRO_EXP,
+    SPCC_CTL_STATE_MAKE_DECISION,
 };
 
-/* Rate change direction picked by the controller. */
-enum spcc_dir {
-    SPCC_DIR_DECR = -1,
-    SPCC_DIR_BASE = 0,
-    SPCC_DIR_INCR = 1,
-};
+/* Number of microexperiments to be performed */
+#define SPCC_MAX_NUM_MICRO_EXPS       2
 
 
 /* for RPC client */

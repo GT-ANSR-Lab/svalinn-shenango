@@ -2,11 +2,16 @@
 ROOT_PATH=../../..
 include $(ROOT_PATH)/build/shared.mk
 
+CXXFLAGS += -I$(ROOT_PATH)/breakwater/src
 CXXFLAGS += -I$(ROOT_PATH)/breakwater/inc
 CXXFLAGS += -I$(ROOT_PATH)/breakwater/bindings/cc/inc
 
+CXXFLAGS += -I$(ROOT_PATH)/m-semaphore/inc
+CXXFLAGS += -I$(ROOT_PATH)/m-semaphore/bindings
+CXXFLAGS += -I$(ROOT_PATH)/m-semaphore/deps/pcm/src
+
 # libbw+++.a - the c++ breakwater library
-bw_src = rpc++.cc
+bw_src = rpc++.cc msem++.cc
 bw_obj = $(bw_src:.cc=.o)
 
 INC += -I$(ROOT_PATH)/bindings

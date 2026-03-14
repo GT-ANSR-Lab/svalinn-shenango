@@ -699,7 +699,7 @@ static void srpc_update_credit_pool()
     int64_t in_delta = ABS(in_cnt - last_in_cnt);
     int64_t out_delta = ABS(out_cnt - last_out_cnt);
 
-    /* double curr_tput = (double)(out_cnt) / tdiff; */
+    double curr_tput = (double)(out_cnt) / tdiff;
 
     if ((in_delta * out_delta) > 0) {
         double slope = (double)out_delta / (double)in_delta;
@@ -758,6 +758,7 @@ static void srpc_handle_req_drop(int stype, uint64_t qus)
 	}
 
 	srpc_cm_last_update = now;
+	srpc_cm_reset_stat = false;
 	spin_unlock_np(&srpc_cm_lock);
 
 	new_cp = decr_credit_pool(stype, qus);
