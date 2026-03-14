@@ -12,17 +12,18 @@ if len(NODES) < 1:
     exit()
 
 # connections to servers
-server_conn = paramiko.SSHClient()
-server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-server_conn.connect(hostname = SERVERS[0], username = USERNAME, pkey = k)
-
 conns = []
-conns.append(server_conn)
-for node in CLIENTS:
+server_conn = None
+client_conns = []
+for node in NODES:
     node_conn = paramiko.SSHClient()
     node_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    node_conn.connect(hostname = node, username = USERNAME, pkey = k)
+    node_conn.connect(hostname = node["name"], username = USERNAME, pkey = k)
     conns.append(node_conn)
+    if node in SERVERS:
+        server_conn = node_conn
+    if node in CLIENTS:
+        client_conns.append(node_conn)
 
 # build memcached
 print("Setting up memcached server...")

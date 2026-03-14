@@ -14,23 +14,26 @@ if len(NODES) < 1:
 # connections to servers
 server_conn = paramiko.SSHClient()
 server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-server_conn.connect(hostname = SERVERS[0], username = USERNAME, pkey = k)
+server_conn.connect(hostname = SERVERS[0]["name"], username = USERNAME, pkey = k)
 
 conns = []
+server_conn = None
 client_conns = []
-conns.append(server_conn)
-for node in CLIENTS:
+for node in NODES:
     node_conn = paramiko.SSHClient()
     node_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    node_conn.connect(hostname = node, username = USERNAME, pkey = k)
+    node_conn.connect(hostname = node["name"], username = USERNAME, pkey = k)
     conns.append(node_conn)
-    client_conns.append(node_conn)
+    if node in SERVERS:
+        server_conn = node_conn
+    if node in CLIENTS:
+        client_conns.append(node_conn)
 
 # install packages
 cmd = "sudo apt-get install -y libgflags-dev libsnappy-dev zlib1g-dev"\
       " libbz2-dev liblz4-dev libzstd-dev"
 execute_remote(conns, cmd, True)
-cmd = "pip3 install pandas openpyxl xlrd"
+cmd = "pip3 install pandas openpyxl xlrd --break-system-packages"
 execute_remote(conns, cmd, True)
 
 # build rocksdb (only on server)
@@ -46,12 +49,12 @@ cmd = "cd ~/{}/breakwater/apps/rocksdb && make clean && make client".format(ARTI
 execute_remote(client_conns, cmd, True)
 
 # Create a tmpfs filesystem on server (change the size if you want)
-print("Creating 40GB in-memory file system on the server (NUMA node {})".format(NODE_NUMA_MAP[SERVERS[0]]))
+print("Creating 20GB in-memory file system on the server (NUMA node 0)")
 cmd = "sudo umount /tmp/ramfs"
 execute_remote([server_conn], cmd, True, False)
 cmd = "sudo rm -rf /tmp/ramfs"
 execute_remote([server_conn], cmd, True, False)
-cmd = "sudo mkdir /tmp/ramfs && sudo numactl --membind={} mount -t tmpfs -o size=40G tmpfs /tmp/ramfs".format(NODE_NUMA_MAP[SERVERS[0]])
+cmd = "sudo mkdir /tmp/ramfs && sudo numactl --membind={} mount -t tmpfs -o size=20G tmpfs /tmp/ramfs".format(SERVERS[0]["numa"])
 execute_remote([server_conn], cmd, True)
 
 print("Done.")

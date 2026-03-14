@@ -17,25 +17,32 @@ import pandas as pd
 # Core allocator settings
 RUNTIME_SCHED = "simple"
 RUNTIME_SCHED_THRESHOLD = 5
+RUNTIME_SCHED_CORES = "0-19"
 RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
-RUNTIME_MEMBW_UPDATE_FREQ = 0
+RUNTIME_MEMBW_UPDATE_FREQ = 10
 RUNTIME_MEMBW_EWMA_WEIGHT = 0.1
 
 # Overload controller settings
 OVERLOAD_ALG = "protego"
 
 # Memory semaphore settings
-MSEM_ENABLE = True
-MSEM_CTL_DELAY_US = 500
-MSEM_ALPHA = 0.6
+MSEM_ENABLE = "msem"
+MSEM_CTL_DELAY_US = 3000
+MSEM_ALPHA = 0.8
 MSEM_TARGET_NORM_MEMBW = 1.0
 MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
 
+# Cores to be allocated to the application
+SERVER_RUNTIME_NUM_CORES = 18
+CLIENT_RUNTIME_NUM_CORES = 18
+
 # Total number of client connections
 NUM_CONNS = 100
+# Total number of server machines
+NUM_SERVERS = len(SERVERS)
 # Total number of client machines (master and agents)
 NUM_CLIENTS = len(CLIENTS)
 # Total number of agents
@@ -43,23 +50,25 @@ NUM_AGENTS = len(AGENTS)
 
 # List of offered load
 NUM_SAMPLES = 1
-MAX_OFFERED_LOAD = 800000
+MAX_OFFERED_LOAD = 1000000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
+LOAD_SHIFT = False
+if LOAD_SHIFT:
+    OFFERED_LOADS = [0]  # Dummy value
+
 
 # Network RTT on the testbed
 NET_RTT = 10
 # SLO = 10 * (average RPC processing time + network RTT)
-SLO = 310
+SLO = 3000
 
-# Rocksdb settings
-RDB_SKEY_COUNT = 100000
-RDB_SKEY_SIZE = 5
-RDB_LKEY_COUNT = 5000
-RDB_LKEY_SIZE = 1000000
-RDB_SKEY_PCNT = 80
+# Netbench settings
+CPU_BOUND_WORK_ITR = 5000
+MEM_BOUND_WORK_ITR = 25
+CPU_BOUND_REQ_PCNT = 50
 
 # Client and Server Caladan Runtime IP addresses
-SERVER_RUNTIME_IP = "192.168.1.200"
+SERVER_RUNTIME_IPS = [ "192.168.1." + str(200 + i) for i in range(NUM_SERVERS)]
 CLIENT_RUNTIME_IP = "192.168.1.100"
 AGENT_RUNTIME_IPS = [ "192.168.1." + str(101 + i) for i in range(NUM_AGENTS)]
 RUNTIME_NETMASK = "255.255.255.0"
@@ -69,12 +78,8 @@ RUNTIME_GATEWAY = "192.168.1.1"
 # Helps in testing quickly by updating the required files
 FILES_TO_REPLACE = [
     # {
-    #     "src": "rocksdb_client.cc",
-    #     "dst": "rocksdb_client.cc",
-    # },
-    # {
-    #     "src": "rocksdb_server.cc",
-    #     "dst": "rocksdb_server.cc",
+    #     "src": "src/netbench.cc",
+    #     "dst": "src/netbench.cc",
     # },
 ]
 
@@ -129,32 +134,33 @@ def generate_caladan_config(conn, is_server, latency_critical,
 
 k = paramiko.RSAKey.from_private_key_file(KEY_LOCATION)
 
-# connection to server
-server_conn = paramiko.SSHClient()
-server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-server_conn.connect(hostname = SERVERS[0]["name"], username = USERNAME, pkey = k)
+# connection to servers
+server_conns = []
+for server in SERVERS:
+    server_conn = paramiko.SSHClient()
+    server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    server_conn.connect(hostname = server, username = USERNAME, pkey = k)
+    server_conns.append(server_conn)
 
 # connection to client
 client_conn = paramiko.SSHClient()
 client_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-client_conn.connect(hostname = CLIENT["name"], username = USERNAME, pkey = k)
+client_conn.connect(hostname = CLIENT, username = USERNAME, pkey = k)
 
 # connections to agents
 agent_conns = []
 for agent in AGENTS:
     agent_conn = paramiko.SSHClient()
     agent_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    agent_conn.connect(hostname = agent["name"], username = USERNAME, pkey = k)
+    agent_conn.connect(hostname = agent, username = USERNAME, pkey = k)
     agent_conns.append(agent_conn)
 
 # Clean-up environment
 print("Cleaning up machines...")
-cmd = "sudo pkill -9 rocksdb_server"
-execute_remote([server_conn], cmd, True, False)
-cmd = "sudo pkill -9 rocksdb_client"
-execute_remote([client_conn] + agent_conns, cmd, True, False)
+cmd = "sudo pkill -9 netbench_ms"
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True, False)
 cmd = "sudo pkill -9 iokerneld"
-execute_remote([server_conn, client_conn] + agent_conns,
+execute_remote(server_conns + [client_conn] + agent_conns,
                cmd, True, False)
 sleep(1)
 
@@ -163,7 +169,7 @@ print("Distributing configs...")
 for node in NODES:
     cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no ./ovld_configs/*.h"\
           " {}@{}:~/{}/breakwater/src/ >/dev/null"\
-          .format(KEY_LOCATION, USERNAME, node["name"], ARTIFACT_PATH)
+          .format(KEY_LOCATION, USERNAME, node, ARTIFACT_PATH)
     execute_local(cmd)
 
 # Replace the frequently files
@@ -173,14 +179,14 @@ for fil in FILES_TO_REPLACE:
         cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no ./{}"\
               " {}@{}:~/{}/{} >/dev/null"\
               .format(KEY_LOCATION, fil["src"], USERNAME,
-                      node["name"], ARTIFACT_PATH, fil["dst"])
+                      node, ARTIFACT_PATH, fil["dst"])
         execute_local(cmd)
 
 # Set the memory bandwidth update frequency
 print("Updating the memory bandwidth estimate update frequency in Caladan...")
 cmd = "sed -i \'s/#define IOKERNEL_MEMBW_UPDATE_FREQ.*/#define IOKERNEL_MEMBW_UPDATE_FREQ\\t\\t\\t{:d}/g\'"\
         " ~/{}/iokernel/defs.h".format(RUNTIME_MEMBW_UPDATE_FREQ, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 cmd = "sed -i \'s/#define IOKERNEL_MEMBW_UPDATE_FREQ.*/#define IOKERNEL_MEMBW_UPDATE_FREQ\\t\\t\\t0/g\'"\
         " ~/{}/iokernel/defs.h".format(ARTIFACT_PATH)
 execute_remote([client_conn] + agent_conns, cmd, True)
@@ -220,49 +226,44 @@ execute_remote([server_conn], cmd, True)
 
 # Generating config files
 print("Generating Caladan config files...")
-generate_caladan_config(server_conn, True, True,
-                        SERVER_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[0]["cores"],
-                        SERVERS[0]["cores"], RUNTIME_ENABLE_DIRECTPATH,
-                        RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
+for i in range(NUM_SERVERS):
+    generate_caladan_config(server_conns[i], True, True,
+                            SERVER_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVER_RUNTIME_NUM_CORES,
+                            SERVER_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
+                            RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
-                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
-                        CLIENT["cores"], RUNTIME_ENABLE_DIRECTPATH,
+                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT_RUNTIME_NUM_CORES,
+                        CLIENT_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
                         True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
-                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
-                            AGENTS[i]["cores"], RUNTIME_ENABLE_DIRECTPATH,
+                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT_RUNTIME_NUM_CORES,
+                            CLIENT_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
                             True, False)
 
 # Rebuild Caladan
 print("Building Caladan...")
 cmd = "cd ~/{} && make clean && make && make -C bindings/cc"\
         .format(ARTIFACT_PATH)
-execute_remote([server_conn, client_conn] + agent_conns, cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 
 # Build Breakwater
 print("Building Breakwater...")
 cmd = "cd ~/{}/breakwater && make clean && make && make -C bindings/cc"\
         .format(ARTIFACT_PATH)
-execute_remote([server_conn, client_conn] + agent_conns, cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 
 # build memory semaphore library
 print("Building MemSemaphore...")
 cmd = "cd ~/{}/m-semaphore && make clean && make all".\
     format(ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 
-# Build RocksDB server
-print("Building RocksDB server...")
-cmd = "cd ~/{}/breakwater/apps/rocksdb && make clean && make server"\
+# Build netbench
+print("Building netbench...")
+cmd = "cd ~/{}/breakwater/apps/netbench/src && make clean && make"\
         .format(ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
-
-# Build RocksDB client
-print("Building RocksDB client...")
-cmd = "cd ~/{}/breakwater/apps/rocksdb && make clean && make client"\
-        .format(ARTIFACT_PATH)
-execute_remote([client_conn] + agent_conns, cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 
 # Execute IOKernel
 iok_sessions = []
@@ -286,57 +287,51 @@ sleep(5)
 print("Removing old output files...")
 cmd = "rm ~/{0}/stdout.out ~/{0}/output.csv ~/{0}/output.json"\
       " ~/{0}/membw.csv >/dev/null 2>&1".format(ARTIFACT_PATH)
-execute_remote([server_conn, client_conn] + agent_conns, cmd, True, False)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True, False)
 
 # Create output directory for this test run
 curr_date = datetime.now().strftime("%m_%d_%Y")
 curr_time = datetime.now().strftime("%H-%M-%S")
-output_dir = "outputs/rocksdb/{}/{}".format(curr_date, curr_time)
+output_dir = "outputs/netbench/{}/{}".format(curr_date, curr_time)
 if not os.path.isdir(output_dir):
    os.makedirs(output_dir)
 
-# Create the RocksDB database
-print("Creating the RocksDB database...")
-cmd = "sudo rm -rf /tmp/ramfs/my_db"
-execute_remote([server_conn], cmd, True)
-cmd = "cd ~/{} && sudo numactl --membind={} ./breakwater/apps/rocksdb/build/rocksdb_createdb"\
-      " --db_path /tmp/ramfs/my_db --skey_size {} --skey_count {}"\
-      " --lkey_size {} --lkey_count {} --nb_threads {}"\
-      .format(ARTIFACT_PATH, SERVERS[0]["numa"], RDB_SKEY_SIZE, RDB_SKEY_COUNT,
-              RDB_LKEY_SIZE, RDB_LKEY_COUNT, 10)
-execute_remote([server_conn], cmd, True)
-
+# Generate the load
 for offered_load in OFFERED_LOADS:
 
-    print("Load = {:d}".format(offered_load))
+    if not LOAD_SHIFT:
+        print("Load = {:d}".format(offered_load))
+    else:
+        print("Starting the load shift experiment")
 
-    # Start RocksDB server (prepopulate with data)
-    print("\tStarting RocksDB server...")
-    cmd = " cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_server --config_path server.config"\
-          " --ovld_cntl_algo {} --port 8001 --db_path /tmp/ramfs/my_db"\
-          " --skey_size {} --skey_count {} --lkey_size {} --lkey_count {}"\
-          " {} >stdout.out 2>&1"\
-          .format(ARTIFACT_PATH, OVERLOAD_ALG, RDB_SKEY_SIZE, RDB_SKEY_COUNT,
-                  RDB_LKEY_SIZE, RDB_LKEY_COUNT, "--use_msem" if MSEM_ENABLE else "")
-    server_session = execute_remote([server_conn], cmd, False)[0]
+    # Start netbench server (prepopulate with data)
+    print("\tStarting netbench server...")
+    cmd = " cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} server.config"\
+          " server {} >stdout.out 2>&1"\
+          .format(ARTIFACT_PATH, OVERLOAD_ALG, MSEM_ENABLE)
+    server_sessions = execute_remote(server_conns, cmd, False)
 
     # This sleep should be enough to complete the prepopulation at the server
     sleep(5)
 
-    # Start RocksDB client
-    print("\tExecuting Rocksdb client...")
+    # Generate a string of IPs and connection info for all server replicas
+    server_ips_arg = " ".join(["{} 1".format(ip) for ip in SERVER_RUNTIME_IPS])
+
+    # Start netbench client
+    print("\tExecuting netbench client...")
     client_agent_sessions = []
-    cmd = "cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_client client.config {} client"\
-          " {} {} 8001 {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
-          .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVER_RUNTIME_IP,
-                  RDB_SKEY_SIZE, RDB_SKEY_COUNT, RDB_LKEY_SIZE, RDB_LKEY_COUNT,
-                  RDB_SKEY_PCNT, SLO, NUM_AGENTS, offered_load)
+    cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} client.config client"\
+          " {} {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
+          .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS,
+                  CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, CPU_BOUND_REQ_PCNT,
+                  SLO, NUM_AGENTS, offered_load,
+                  "load_shift" if LOAD_SHIFT else "no_load_shift", server_ips_arg)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
 
-    # Start RocksDB agents
-    print("\tExecuting RocksDB agents...")
-    cmd = "cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_client client.config {} agent {}"\
+    # Start netbench agents
+    print("\tExecuting netbench agents...")
+    cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} client.config agent {}"\
           " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
@@ -344,87 +339,100 @@ for offered_load in OFFERED_LOADS:
     sleep(2)
 
     # Wait for client and agents
-    print("\tWaiting for RocksDB client and agents...")
+    print("\tWaiting for netbench client and agents...")
     for client_agent_session in client_agent_sessions:
         client_agent_session.recv_exit_status()
 
-    # Kill clients
-    print("\tKilling RocksDB clients...")
-    cmd = "sudo pkill -9 rocksdb_client"
-    execute_remote([client_conn] + agent_conns, cmd, True, False)
-
-    # Kill server
-    print("\tKilling RocksDB server...")
-    cmd = "sudo pkill -9 rocksdb_server"
-    execute_remote([server_conn], cmd, True)
-    server_session.recv_exit_status()
+    # Kill clients and server
+    print("\tKilling netbench clients and server...")
+    cmd = "sudo pkill -9 netbench_ms"
+    execute_remote(server_conns + [client_conn] + agent_conns, cmd, True, False)
 
     sleep(1)
 
 # Kill IOKernel
 cmd = "sudo pkill -9 iokerneld"
-execute_remote([server_conn, client_conn] + agent_conns, cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 
 # Wait for IOKernel sessions
 for iok_session in iok_sessions:
     iok_session.recv_exit_status()
 
 # Close connections
-server_conn.close()
+for server_conn in server_conns:
+    server_conn.close()
 client_conn.close()
 for agent_conn in agent_conns:
     agent_conn.close()
 
-
 print("Collecting outputs...")
 # Collect the client stats
 cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/output.csv ./"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH)
+        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH)
 execute_local(cmd)
 # Add the header to the raw output CSV file
-header = "num_clients,offered_load,throughput,skey_throughput,lkey_throughput,goodput,cpu"\
-         ",min,mean,p50,skey_p50,lkey_p50,p90,skey_p90,lkey_p90,p99,skey_p99,lkey_p99,p999,p9999"\
-         ",max,lmin,lmean,lp50,lp90,lp99,lp999,lp9999,lmax,p1_win,mean_win,p99_win,p1_q,mean_q,p99_q,server:rx_pps"\
-         ",server:tx_pps,server:rx_bps,server:tx_bps,server:rx_drops_pps,server:rx_ooo_pps"\
-         ",server:winu_rx_pps,server:winu_tx_pps,server:win_tx_wps,server:req_rx_pps"\
-         ",server:resp_tx_pps,client:min_tput,client:max_tput"\
-         ",client:winu_rx_pps,client:winu_tx_pps,client:resp_rx_pps,client:req_tx_pps"\
-         ",client:win_expired_wps,client:req_dropped_rps"
+header = "num_threads,offered_load,throughput,cpu_bound_req_throughput,"\
+         "mem_bound_req_throughput,goodput,min,mean,p50,cpu_bound_req_p50,"\
+         "mem_bound_req_p50,p90,cpu_bound_req_p90,mem_bound_req_p90,p99,"\
+         "cpu_bound_req_p99,mem_bound_req_p99,p999,p9999,max,reject_min,"\
+         "reject_mean,reject_p50,reject_p99,p1_credit,mean_credit,p99_credit,"\
+         "p1_q,mean_q,p99_q,mean_stime,p99_stime,client:min_tput,client:max_tput,"\
+         "client:ecredit_rx_pps,client:cupdate_tx_pps,client:resp_rx_pps,client:req_tx_pps,"\
+         "client:credit_expired_cps,client:req_dropped_rps,"
+for i in range(NUM_SERVERS):
+    header += "server{0}:cpu_bound_req_throughput,"\
+               "server{0}:mem_bound_req_throughput,server{0}:cpu_usage,server{0}:rx_pps,server{0}:tx_pps,"\
+               "server{0}:rx_bps,server{0}:tx_bps,server{0}:rx_drops_pps,server{0}:rx_ooo_pps,"\
+               "server{0}:cupdate_rx_pps,server{0}:ecredit_tx_pps,server{0}:credit_tx_cps,"\
+               "server{0}:req_rx_pps,server{0}:req_drop_rate,server{0}:resp_tx_pps,server{0}:reject_mean,"\
+               "server{0}:reject_min,server{0}:reject_p50,server{0}:reject_p99,"\
+               .format(i)
 cmd = "echo \"{}\" > {}/output.csv".format(header, output_dir)
 execute_local(cmd)
 cmd = "cat output.csv >> {}/output.csv".format(output_dir)
 execute_local(cmd)
+cmd = "cp {}/output.csv ./output.csv".format(output_dir)
+execute_local(cmd)
+
+# Collect the all tasks file for load shift experiment
+if LOAD_SHIFT:
+    cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/all_tasks.csv ./"\
+          " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH)
+    execute_local(cmd)
 
 # Collect the stdout from the server
 print("Collecting stdout of server...")
 cmd = "rsync -azh --info=progress2 -e \"ssh -i {} -o StrictHostKeyChecking=no -o"\
         " UserKnownHostsFile=/dev/null\" {}@{}:~/{}/stdout.out {}/stdout.out.server >/dev/null"\
-        .format(KEY_LOCATION, USERNAME, SERVERS[0]["name"], ARTIFACT_PATH, output_dir)
+        .format(KEY_LOCATION, USERNAME, SERVERS[0], ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 
 # Collect the stdout from the client
 print("Collecting stdout of client...")
 cmd = "rsync -azh --info=progress2 -e \"ssh -i {} -o StrictHostKeyChecking=no -o"\
         " UserKnownHostsFile=/dev/null\" {}@{}:~/{}/stdout.out {}/stdout.out.client >/dev/null"\
-        .format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH, output_dir)
+        .format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 
 # Collect the the Caladan configs
 print("Collecting the Caladan configs for server and client...")
 cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/server.config {}/"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, SERVERS[0]["name"], ARTIFACT_PATH, output_dir)
+        " >/dev/null".format(KEY_LOCATION, USERNAME, SERVERS[0], ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/client.config {}/"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH, output_dir)
+        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 
 # Collect the config used by this test run
 run_config = "runtime scheduler: {}\n".format(RUNTIME_SCHED)
 run_config += "runtime scheduler queueing threshold: {} us\n".format(RUNTIME_SCHED_THRESHOLD)
+run_config += "runtime scheduler managed cores: {}\n".format(RUNTIME_SCHED_CORES)
 run_config += "runtime scheduler spins cores for server: {}\n".format(RUNTIME_SPIN_SERVER)
 run_config += "runtime enable directpath networking: {}\n".format(RUNTIME_ENABLE_DIRECTPATH)
 run_config += "runtime disable watchdog: {}\n".format(RUNTIME_DISABLE_WATCHDOG)
 run_config += "overload algorithm: {}\n".format(OVERLOAD_ALG)
+run_config += "server runtime number of cores: {}\n".format(SERVER_RUNTIME_NUM_CORES)
+run_config += "client(s) runtime number of cores: {}\n".format(CLIENT_RUNTIME_NUM_CORES)
 run_config += "number of nodes: {}\n".format(len(NODES))
 run_config += "number of client nodes: {}\n".format(len(CLIENTS))
 run_config += "number of agent nodes: {}\n".format(len(AGENTS))
@@ -432,11 +440,9 @@ run_config += "number of connections: {}\n".format(NUM_CONNS)
 run_config += "offered load (in RPS): {}\n".format(OFFERED_LOADS)
 run_config += "RTT: {} us\n".format(NET_RTT)
 run_config += "SLO: {} us\n".format(SLO)
-run_config += "Short key size : {} bytes\n".format(RDB_SKEY_SIZE)
-run_config += "Short key count : {} bytes\n".format(RDB_SKEY_COUNT)
-run_config += "Large key size : {} bytes\n".format(RDB_LKEY_SIZE)
-run_config += "Large key count : {} bytes\n".format(RDB_LKEY_COUNT)
-run_config += "Short key percentage : {} %\n".format(RDB_SKEY_PCNT)
+run_config += "CPU-bound workload per-request iterations: {}\n".format(CPU_BOUND_WORK_ITR)
+run_config += "Memory-bound workload per-request iterations: {}\n".format(MEM_BOUND_WORK_ITR)
+run_config += "CPU-bound request percentage: {}\n".format(CPU_BOUND_REQ_PCNT)
 cmd = "echo \"{}\" > {}/run.config".format(run_config, output_dir)
 execute_local(cmd)
 

@@ -12,19 +12,12 @@ if len(NODES) < 1:
     exit()
 
 # connections to servers
-server_conn = paramiko.SSHClient()
-server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-server_conn.connect(hostname = SERVERS[0], username = USERNAME, pkey = k)
-
 conns = []
-client_conns = []
-conns.append(server_conn)
-for node in CLIENTS:
+for node in NODES:
     node_conn = paramiko.SSHClient()
     node_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    node_conn.connect(hostname = node, username = USERNAME, pkey = k)
+    node_conn.connect(hostname = node["name"], username = USERNAME, pkey = k)
     conns.append(node_conn)
-    client_conns.append(node_conn)
 
 # build the netbench program
 print("Building netbench client and server programs...")

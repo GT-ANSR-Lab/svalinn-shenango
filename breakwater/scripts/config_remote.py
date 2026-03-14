@@ -2,45 +2,114 @@
 ### config_remote.py - configuration for remote servers
 ###
 
+# Paremters for a few known machines
+#
+# xl170 cloudlab
+#   type: "xl170"
+#   numa: 0
+#   cores: 18
+#   nicpci: 0000:03:00.1
+#
+# c6525-25g cloudlab
+#   type: "c6525-25g"
+#   numa: 0
+#   cores: 30
+#   nicpci: 0000:41:00.0
+#
+
 NODES = [
-    "gon.cc.gatech.edu",
-    "asta.cc.gatech.edu",
-]
-NODE_NUMA = [
-    0,
-    0,
-]
-NODE_CPU_CORES = [
-    45,
-    45,
-]
-NODE_ARTIFACT_BRANCH = [
-    "gon",
-    "asta",
-]
-NODE_NIC_PCI_ADDR = [
-    "0000:17:00.1",
-    "0000:17:00.0",
-]
-NODE_IP_ADDR = [
-    "192.168.11.129",
-    "192.168.10.128",
-]
-NODE_NETMASK = [
-    "255.255.255.0",
-    "255.255.255.0",
-]
-NODE_GATEWAY_ADDR = [
-    "192.168.11.130",
-    "192.168.10.130",
+    {
+        "name": "node-0.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-1.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-2.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-3.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-4.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-5.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-6.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-7.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-8.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-9.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-10.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "xl170",
+        "numa": 0,
+        "cores": 18,
+        "nicpci": "0000:03:00.1",
+    },
+    {
+        "name": "node-11.bhaskar3-294079.cc-profiler-pg0.utah.cloudlab.us",
+        "type": "c6525-25g",
+        "numa": 0,
+        "cores": 30,
+        "nicpci": "0000:41:00.0",
+    },
 ]
 
 # Public domain or IP of server
-SERVERS = NODES[0:1]
+SERVERS = NODES[10:11]
 # Public domain or IP of intemediate
 INTNODES = []
 # Public domain or IP of client and agents
-CLIENTS = NODES[1:]
+CLIENTS = NODES[0:10]
 # Public domain or IP of client
 CLIENT = CLIENTS[0]
 AGENTS = CLIENTS[1:]
@@ -50,8 +119,8 @@ MONITOR = ""
 
 # Username and SSH credential location to access
 # the server, client, and agents via public IP
-USERNAME = "bpardeshi3"
-KEY_LOCATION = "/home/bpardeshi3/.ssh/id_rsa"
+USERNAME = "bhaskar3"
+KEY_LOCATION = "/users/bhaskar3/.ssh/id_rsa"
 
 # Location of Shenango to be installed. With "", Shenango
 # will be installed in the home direcotry
@@ -59,15 +128,9 @@ ARTIFACT_PARENT = ""
 
 ### End of config ###
 
-NODE_NUMA_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_NUMA))}
-NODE_CPU_CORES_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_CPU_CORES))}
-NODE_ARTIFACT_BRANCH_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_ARTIFACT_BRANCH))}
-NODE_NIC_PCI_ADDR_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_NIC_PCI_ADDR))}
-NODE_IP_ADDR_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_IP_ADDR))}
-NODE_NETMASK_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_NETMASK))}
-NODE_GATEWAY_ADDR_MAP = {x[0]:x[1] for x in list(zip(NODES, NODE_GATEWAY_ADDR))}
-
 ARTIFACT_PATH = ARTIFACT_PARENT
 if ARTIFACT_PATH != "":
     ARTIFACT_PATH += "/"
 ARTIFACT_PATH += "caladan-all-artifact"
+
+
