@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
 #include <stdbool.h>
 
 // Opaque pointer type representing MemSemaphore
@@ -15,6 +16,15 @@ MemSemaphoreHandle* MemSemaphore_GetInstance(void);
 
 // Non-blocking acquire
 bool MemSemaphore_TryWait(MemSemaphoreHandle* msem);
+
+// Blocking acquire
+void MemSemaphore_Wait(MemSemaphoreHandle* msem);
+
+// Queueing delay (in cycles)
+uint64_t MemSemaphore_QueueDelayTsc(MemSemaphoreHandle* msem);
+
+// Queueing length
+uint64_t MemSemaphore_QueueLength(MemSemaphoreHandle* msem);
 
 // Release
 void MemSemaphore_Post(MemSemaphoreHandle* msem);

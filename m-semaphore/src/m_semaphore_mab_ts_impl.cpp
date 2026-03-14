@@ -2,18 +2,28 @@ extern "C" {
 #include <numa.h>
 #include <sched.h>
 #include "base/time.h"
+#include "base/list.h"
+#include "runtime/thread.h"
 }
 
 #include <cstdio>
 #include <cmath>
 #include <cassert>
 #include "cc/runtime.h"
-#include "m_semaphore_opt_impl.hpp"
+#include "m_semaphore_mab_ts_impl.hpp"
 
 
-MemSemaphoreOptImpl::MemSemaphoreOptImpl(uint32_t init_cap) {
+// Structure for storing some state of a waiting thread.
+struct WaiterThread {
+    thread_t         *th;
+    uint64_t          enque_tsc;
+    struct list_node  link;
+};
 
-    // Initialize the semaphore-specific state
+
+MemSemaphoreMabTsImpl::MemSemaphoreMabTsImpl(uint32_t init_cap) {
+
+    // Initialize the basic state
     m_cap = init_cap;
     m_count = 0;
     m_max_cap = rt::RuntimeMaxCores();
@@ -33,39 +43,40 @@ MemSemaphoreOptImpl::MemSemaphoreOptImpl(uint32_t init_cap) {
         m_std_devs[i] = std::sqrt(m_vars[i]);
     }
 
-    // Pre-generate a set of standard normal samples
-    std::random_device               rd;
-    std::mt19937                     gen(rd());
-    std::normal_distribution<double> std_normal;
-    for (uint64_t i = 0; i < NUM_STD_NORM_SAMPLES; ++i) {
-        m_std_normals[i] = std_normal(gen);
-    }
-    m_std_normals_idx = 0;
+    // Initialize the random number generation state
+    m_gen = std::mt19937(m_rd());
+    m_std_normal = std::normal_distribution<double>(0.0, 1.0);
 
-    // Get the calling cpu's numa node
-    uint32_t cpu = sched_getcpu();
-    uint32_t node = numa_node_of_cpu(cpu);
+    // Configure the memory PMC object (required to measure membw)
+    m_mem_pmc.Init();
+    m_num_mem_ch = m_mem_pmc.GetActiveMemChan();
+    m_last_bytes = m_mem_pmc.GetMemAccesses();
 
     // Set the control time
     m_last_time = microtime();
+
+    // Initialize the waiter state
+    list_head_init(&m_waiters);
+    m_num_waiters = 0;
 
 #ifdef M_SEM_DEBUG
     m_avg_count = 0;
     m_avg_cap = 0;
 
-    printf("[%ld] Initial Capacity=%d, Maximum Capacity=%d, Numa Node=%d\n",
-           m_last_time, init_cap, m_max_cap, node);
+    printf("[%ld] Initial Capacity=%d, Maximum Capacity=%d,"
+           " Number of Memory Channels=%ld\n",
+           m_last_time, init_cap, m_max_cap, m_num_mem_ch);
 #endif
 }
 
 
-MemSemaphoreOptImpl::~MemSemaphoreOptImpl() {
+MemSemaphoreMabTsImpl::~MemSemaphoreMabTsImpl() {
 
     assert(!m_count);
 }
 
 
-void MemSemaphoreOptImpl::UpdateCapacity() {
+void MemSemaphoreMabTsImpl::UpdateCapacity() {
 
     assert(m_spin.IsHeld());
 
@@ -76,8 +87,9 @@ void MemSemaphoreOptImpl::UpdateCapacity() {
         return;
     }
 
-    // Get the memory bandwidth usage from IOkernel
-    double membw = rt::RuntimeMembwUsage();
+    // Get the memory bandwidth usage
+    uint64_t now_bytes = m_mem_pmc.GetMemAccesses();
+    double membw = (double)(now_bytes - m_last_bytes) / (double)(now_time - m_last_time);
 
     // Update the maximum memory bandwidth
     if (m_max_membw < membw) {
@@ -176,8 +188,7 @@ void MemSemaphoreOptImpl::UpdateCapacity() {
         // as good as always drawing the most optimal option.
         double max_mean = -100000000.0;
         for (uint32_t i = 1; i <= m_max_cap; ++i) {
-            double z = m_std_normals[m_std_normals_idx++];
-            m_std_normals_idx = m_std_normals_idx & (NUM_STD_NORM_SAMPLES - 1);
+            double z = m_std_normal(m_gen);
 
             double mean = m_means[i] + m_std_devs[i] * z;
             if (max_mean < mean) {
@@ -195,22 +206,20 @@ void MemSemaphoreOptImpl::UpdateCapacity() {
     printf("[%ld] Updated Capacity=%d\n", now_time, m_cap);
     printf("[%ld] Average Capacity=%lf\n", now_time, m_avg_cap);
     printf("[%ld] {", now_time);
-    int count = 0;
     for (uint32_t i = 1; i <= m_max_cap; ++i) {
         printf("[cap=%d]:[mean=%lf,stddev=%lf,cnt=%ld],",
                i, m_means[i], m_std_devs[i], m_counts[i]);
-        count += m_counts[i];
     }
     printf("}\n");
-    printf("[%ld] Total Count=%d\n", now_time, count);
 #endif
 
     // Update any remaining state
+    m_last_bytes = now_bytes;
     m_last_time = now_time;
 }
 
 
-bool MemSemaphoreOptImpl::TryWait() {
+bool MemSemaphoreMabTsImpl::TryWait() {
 
     bool acquired = false;
     m_spin.Lock();
@@ -229,8 +238,82 @@ bool MemSemaphoreOptImpl::TryWait() {
 }
 
 
-void MemSemaphoreOptImpl::Post() {
+void MemSemaphoreMabTsImpl::Wait() {
+
+    WaiterThread *waketh;
+
     m_spin.Lock();
-    --m_count;
+
+    // Dynamically update the semaphore's capacity
+    UpdateCapacity();
+
+    // While there is available semaphore capacity
+    // and there are threads waiting before the current
+    // thread to acquire the semaphore, we will give
+    // semaphore to those older threads.
+    while ((m_count < m_cap) && !list_empty(&m_waiters)) {
+        // Pop the thread at the head of the queue
+        waketh = list_pop(&m_waiters, WaiterThread, link);
+        uint64_t now = rdtsc();
+        incr_acc_qdel_other(waketh->th, now - waketh->enque_tsc);
+        thread_ready(waketh->th);
+
+        // Update semaphore state
+        ++m_count;
+        --m_num_waiters;
+    }
+
+    // If capacity is stil available to serve the current thread
+    if (m_count < m_cap) {
+        // Acquire and exit
+        ++m_count;
+        m_spin.Unlock();
+        return;
+    }
+
+    // Put the current thread at the tail of the queue
+    WaiterThread myth;
+    myth.th = thread_self();
+    myth.enque_tsc = rdtsc();
+    list_add_tail(&m_waiters, &myth.link);
+    ++m_num_waiters;
+    m_spin.UnlockAndPark();
+}
+
+
+uint64_t MemSemaphoreMabTsImpl::QueueDelayTsc() {
+
+    // XXX: Not implemented
+    return 0;
+}
+
+
+uint64_t MemSemaphoreMabTsImpl::QueueLength() {
+
+    return m_num_waiters;
+}
+
+
+void MemSemaphoreMabTsImpl::Post() {
+    WaiterThread *waketh;
+
+    m_spin.Lock();
+
+    // Dynamically update the semaphore's capacity
+    UpdateCapacity();
+
+    // If there is no available capacity to wakeup
+    // anyone, or there is no other thread to wakeup
+    if ((m_count > m_cap) || list_empty(&m_waiters)) {
+        --m_count;
+    } else {
+        waketh = list_pop(&m_waiters, WaiterThread, link);
+        uint64_t now = rdtsc();
+        incr_acc_qdel_other(waketh->th, now - waketh->enque_tsc);
+        thread_ready(waketh->th);
+
+        --m_num_waiters;
+    }
+
     m_spin.Unlock();
 }

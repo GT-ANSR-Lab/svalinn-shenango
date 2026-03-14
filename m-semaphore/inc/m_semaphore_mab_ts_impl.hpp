@@ -1,5 +1,5 @@
-#ifndef __M_SEMAPHORE_SIMPLE_IMPL_HPP__
-#define __M_SEMAPHORE_SIMPLE_IMPL_HPP__
+#ifndef __M_SEMAPHORE_MAB_TS_IMPL_HPP__
+#define __M_SEMAPHORE_MAB_TS_IMPL_HPP__
 
 extern "C" {
 #include "base/limits.h"
@@ -10,11 +10,12 @@ extern "C" {
 #include <memory>
 
 #include "cc/sync.h"
-#include "cpucounters.h"
+#include "base/list.h"
+#include "mem_pmc.hpp"
 #include "m_semaphore_impl.hpp"
 
 
-class MemSemaphoreSimpleImpl : public MemSemaphoreImpl {
+class MemSemaphoreMabTsImpl : public MemSemaphoreImpl {
 private:
     // Generic Constants.
     static constexpr uint64_t    CTL_DELAY_US                  = 500;
@@ -82,13 +83,16 @@ private:
     std::normal_distribution<double> m_std_normal;
 
     // State to calculate the memory bandwidth usage.
-    std::unique_ptr<pcm::PCM>               m_pcm;
-    std::unique_ptr<pcm::ServerUncorePMUs>  m_unc;
-    size_t                                  m_num_mem_ch;
-    uint64_t                                m_last_bytes;
+    MemPmc      m_mem_pmc;
+    size_t      m_num_mem_ch;
+    uint64_t    m_last_bytes;
 
     // Last time the controller ran.
     uint64_t m_last_time;
+
+    // List of threads waiting to acquire the semaphore.
+    struct list_head m_waiters;
+    uint64_t         m_num_waiters;
 
 #ifdef M_SEM_DEBUG
     // Average capacity.
@@ -96,22 +100,21 @@ private:
     uint64_t    m_avg_count;
 #endif  // M_SEM_DEBUG
 
-    // Helpers to calculate memory bandwidth usage.
-    uint64_t PcmGetMcAccesses(uint32_t channel);
-    uint64_t PcmGetActiveMcCount();
-
     // Helper function which performs the core capacity control logic.
     void UpdateCapacity();
 
 public:
-    MemSemaphoreSimpleImpl(uint32_t init_cap = DEF_INIT_CAP);
-    ~MemSemaphoreSimpleImpl();
+    MemSemaphoreMabTsImpl(uint32_t init_cap = DEF_INIT_CAP);
+    ~MemSemaphoreMabTsImpl();
 
     bool TryWait() override;
+    void Wait() override;
+    uint64_t QueueDelayTsc() override;
+    uint64_t QueueLength() override;
     void Post() override;
     int GetCapacity() override {
         return m_cap;
     }
 };
 
-#endif  // __M_SEMAPHORE_SIMPLE_IMPL_HPP__
+#endif  // __M_SEMAPHORE_MAB_TS_IMPL_HPP__

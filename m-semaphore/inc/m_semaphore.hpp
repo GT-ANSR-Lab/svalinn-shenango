@@ -1,6 +1,7 @@
 #ifndef __M_SEMAPHORE_HPP__
 #define __M_SEMAPHORE_HPP__
 
+#include <cstdint>
 #include <memory>
 #include "m_semaphore_impl.hpp"
 
@@ -26,6 +27,15 @@ public:
     // Non-blocking semaphore acquire. Returns true if the calling thread
     // successfully acquired the semaphore. Otherwise returns false.
     bool TryWait();
+
+    // Blocking semaphore acquire.
+    void Wait();
+
+    // Queueing delay of the list of waiters.
+    uint64_t QueueDelayTsc();
+
+    // Queueing length of the list of waiters.
+    uint64_t QueueLength();
 
     // Releases the semaphore.
     void Post();

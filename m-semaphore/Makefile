@@ -3,19 +3,28 @@ BUILD_PATH=./build
 
 include $(ROOT_PATH)/build/shared.mk
 
-# Build options
-CFLAGS += -DM_SEM_OPT			# Disable this for unoptimized m-semaphore
-# CFLAGS += -DM_SEM_DEBUG       # Enable this for debug logging
+# Type of msemaphore (select only one)
+CFLAGS += -DM_SEM_MAB_EPSILON_GREEDY
+# CFLAGS += -DM_SEM_MAB_THOMPSON_SAMPLING
+
+# Debug build
+# CFLAGS += -DM_SEM_DEBUG
 
 # Includes
 CFLAGS += -I./inc
 CFLAGS += -I./deps/pcm/src
 CFLAGS += -I$(ROOT_PATH)/bindings
 CFLAGS += -I./bindings
+CFLAGS += -I./utils
 
 # Core files
 msem_src = $(wildcard src/*.cpp)
 msem_obj = $(patsubst src/%.cpp, $(BUILD_PATH)/%.o, $(msem_src))
+
+# Utility files
+msem_utils_src = $(wildcard utils/*.cpp)
+msem_utils_obj = $(patsubst utils/%.cpp, $(BUILD_PATH)/%.o, $(msem_utils_src))
+msem_obj += $(msem_utils_obj)
 
 # C Bindings
 msem_c_bindings_src = $(wildcard bindings/c/*.cpp)
@@ -44,6 +53,12 @@ $(BUILD_PATH)/%.d: src/%.cpp
 	mkdir -p $(BUILD_PATH)
 	@$(CXX) $(CFLAGS) $< -MM -MT $(@:.d=.o) >$@
 $(BUILD_PATH)/%.o: src/%.cpp
+	mkdir -p $(BUILD_PATH)
+	@$(CXX) $(CFLAGS) -c $< -o $@
+$(BUILD_PATH)/%.d: utils/%.cpp
+	mkdir -p $(BUILD_PATH)
+	@$(CXX) $(CFLAGS) $< -MM -MT $(@:.d=.o) >$@
+$(BUILD_PATH)/%.o: utils/%.cpp
 	mkdir -p $(BUILD_PATH)
 	@$(CXX) $(CFLAGS) -c $< -o $@
 $(BUILD_PATH)/%.d: bindings/c/%.cpp

@@ -20,6 +20,30 @@ bool MemSemaphore_TryWait(MemSemaphoreHandle* msem) {
     return msem->obj->TryWait();
 }
 
+void MemSemaphore_Wait(MemSemaphoreHandle* msem) {
+    if (!msem || !msem->obj) {
+        return;
+    }
+
+    msem->obj->Wait();
+}
+
+uint64_t MemSemaphore_QueueDelayTsc(MemSemaphoreHandle* msem) {
+    if (!msem || !msem->obj) {
+        return 0;
+    }
+
+    return msem->obj->QueueDelayTsc();
+}
+
+uint64_t MemSemaphore_QueueLength(MemSemaphoreHandle* msem) {
+    if (!msem || !msem->obj) {
+        return 0;
+    }
+
+    return msem->obj->QueueLength();
+}
+
 void MemSemaphore_Post(MemSemaphoreHandle* msem) {
     if (!msem || !msem->obj) {
         return;

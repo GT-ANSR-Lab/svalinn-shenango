@@ -7,6 +7,9 @@ public:
     virtual ~MemSemaphoreImpl() = default;
 
     virtual bool TryWait() = 0;
+    virtual void Wait() = 0;
+    virtual uint64_t QueueDelayTsc() = 0;
+    virtual uint64_t QueueLength() = 0;
     virtual void Post() = 0;
     virtual int GetCapacity() = 0;
 };
