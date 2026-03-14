@@ -1026,7 +1026,7 @@ int sched_init(void)
 		sched_cores_tbl[sched_cores_nr++] = i;
 
 	/* initialize the PCM module */
-	if (IOKERNEL_MEMBW_UPDATE_FREQ) {
+	if (IOKERNEL_MEMBW_UPDATE_FREQ && !cfg.nobw) {
 		log_info("sched: initializing PCM on NUMA node %d", managed_numa_node);
 		pcm_iok_init(managed_numa_node);
 	}
