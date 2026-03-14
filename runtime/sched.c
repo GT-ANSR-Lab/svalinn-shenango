@@ -71,13 +71,19 @@ uint64_t get_acc_qdel_us(void)
 void set_acc_qdel(uint64_t del)
 {
 	BUG_ON(!perthread_read_stable(__self));
-    (perthread_read_stable(__self))->acc_qdel = del;
+	(perthread_read_stable(__self))->acc_qdel = del;
 }
 
 void incr_acc_qdel(uint64_t del)
 {
 	BUG_ON(!perthread_read_stable(__self));
-    (perthread_read_stable(__self))->acc_qdel += del;
+	(perthread_read_stable(__self))->acc_qdel += del;
+}
+
+void incr_acc_qdel_other(thread_t *th, uint64_t del)
+{
+        BUG_ON(!th);
+	th->acc_qdel += del;
 }
 
 void incr_acc_qdel_us(uint64_t us)
@@ -88,13 +94,13 @@ void incr_acc_qdel_us(uint64_t us)
 void set_rpc_ctx(void *c)
 {
 	BUG_ON(!perthread_read_stable(__self));
-    (perthread_read_stable(__self))->rpc_ctx = c;
+	(perthread_read_stable(__self))->rpc_ctx = c;
 }
 
 void *get_rpc_ctx(void)
 {
 	BUG_ON(!perthread_read_stable(__self));
-    return (perthread_read_stable(__self))->rpc_ctx;
+	return (perthread_read_stable(__self))->rpc_ctx;
 }
 
 /**
@@ -798,8 +804,8 @@ static void thread_preempt_ready_prepare(struct kthread *k, thread_t *th)
 
 	/* prepare thread to be runnable */
 	th->thread_ready = true;
-	// th->ready_tsc = rdtsc(); // XXX: Why was this commented by Aspen authors
-	th->enque_ts = rdtsc();  // XXX: Do we have to comment this too then?
+	th->ready_tsc = rdtsc();
+	th->enque_ts = rdtsc();
 	if (cores_have_affinity(th->last_cpu, k->curr_cpu))
 		STAT(LOCAL_WAKES)++;
 	else

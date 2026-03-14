@@ -50,6 +50,7 @@ extern uint64_t get_acc_qdel(void);
 extern uint64_t get_acc_qdel_us(void);
 extern void set_acc_qdel(uint64_t del);
 extern void incr_acc_qdel(uint64_t del);
+extern void incr_acc_qdel_other(thread_t *th, uint64_t del);
 extern void incr_acc_qdel_us(uint64_t us);
 extern void set_rpc_ctx(void *c);
 extern void *get_rpc_ctx(void);
