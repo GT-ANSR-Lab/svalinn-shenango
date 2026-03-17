@@ -1,60 +1,28 @@
-# Aspen
+## Notes
+* The benchmarks are tested on `xl170`, `c6525-25g` machines on Cloudlab and `asta`, `gon` on GT Cluster.
+* The image used to deploy the hosts is `urn:publicid:IDN+utah.cloudlab.us+image+cc-profiler-PG0:shubuntu24linux68mlnxofed`.
+* You can use [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile to deploy an experiment on Cloudlab.
 
-This Aspen repository is configured to run without any modifications on Asta (i.e., asta.cc.gatech.edu).
+## Setup steps
+* Deploy the nodes in Cloudlab using [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile.
+* SSH setup
+  - Create SSH public-private key pairs on all the nodes using `ssh-keygen -t rsa`
+  - Add the `~/.ssh/id_rsa.pub` of the node, where we are going to clone this repository and run the tests from (for e.g., node-1), to all the other nodes' `~/.ssh/authorized_keys`, including itself.
+* Clone this repository (run on node-1)
+  - `git clone https://github.gatech.edu/HeteroBench/caladan-all.git`
+  - `git checkout <branch>` (branch will be either main or main-old)
+* Update config_remote.py (run on node-1)
+  - Update `NODES` with the DNS names or IP addresses of the nodes in your test setup.
+  - `NODES[0]` is the server, rest of the nodes are the clients.
+  - `NODES[1]` is the master client, rest of the clients are secondary clients (agents).
+  - Update `USERNAME` with the one that has access to all the nodes.
+  - Update `KEY_LOCATION` with the path to the private key `~/.ssh/id_rsa`.
+* Perform general setup on all nodes (run on node-1)
+  - `./setup_remote.py`
+* Perform application-specific setup on all nodes (run on node-1)
+  - `./setup_dataframe.py` or `./setup_rocksdb.py` or any other application-specific setup script.
 
-As of now Asta's NIC (ens255f0np0) has the following settings
-1. NUMA node connected to - 0
-2. DPDK Port - 0
-3. PCI address - 0000:17:00.0
-4. Directpath support - Yes, only for "qs", i.e., Queue Steering mode
-
-Follow the instructions in `README.orig.md` to compile the repository. As compared to the original Aspen repository, this fork does not include the submodules for the applications and concord, as we do not need them.
-
-Aspen has been tested on Asta machine, booted with Ubuntu 22.04 operating system with [Intel's custom Linux kernel for user interrupt system calls](https://github.com/intel/uintr-linux-kernel.git).
-
-## How to install the Intel's UINTR Linux kernel
-
-### Install basic dependencies
-```
-sudo apt update
-sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget git
-```
-
-### Download the Intel's kernel
-```
-git clone https://github.com/intel/uintr-linux-kernel.git
-git checkout uintr-next
-```
-
-If you dont want the Intel's kernel, you can download any other release by doing the following
-```
-cd /usr/src
-sudo wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.8.tar.xz
-sudo tar -xvf linux-6.8.tar.xz
-```
-The above code installs the linux version 6.8.0. You can find the appropriate Linux version as per your requirements.
-
-### Build the Linux kernel
-```
-cd uintr-linux-kernel
-
-cp /boot/config-$(uname -r) .config
-make olddefconfig
-
-# For uintr-linux-kernel, specifically, do the following
-CONFIG_X86_USER_INTERRUPTS=y
-
-scripts/config --disable SYSTEM_TRUSTED_KEYS
-scripts/config --disable SYSTEM_REVOCATION_KEYS
-
-make -j$(nproc)
-sudo make modules_install
-sudo make install
-sudo update-grub
-
-sudo reboot
-```
-
-## Runtime and Build config
-
-Aspen introduces new config and runtime config options. Check the example runtime configs `client.config` and `server.config` files. Also check the `build/config` file to select whether we want the aspen runtime to support preemption or not.
+## Running the tests
+* Run the application-specific test script (run on node-1)
+  - `./run_dataframe.py` or `./run_rocksdb.py` or any other application-specific test script.
+  - This will save the output of the test run in the `outputs/<app_name>/<date>/<time>` directory.
