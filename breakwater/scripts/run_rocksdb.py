@@ -20,8 +20,6 @@ RUNTIME_SCHED_THRESHOLD = 5
 RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
-RUNTIME_MEMBW_UPDATE_FREQ = 0
-RUNTIME_MEMBW_EWMA_WEIGHT = 0.1
 
 # Overload controller settings
 OVERLOAD_ALG = "protego"
@@ -173,21 +171,6 @@ for fil in FILES_TO_REPLACE:
               .format(KEY_LOCATION, fil["src"], USERNAME,
                       node["name"], ARTIFACT_PATH, fil["dst"])
         execute_local(cmd)
-
-# Set the memory bandwidth update frequency
-print("Updating the memory bandwidth estimate update frequency in Caladan...")
-cmd = "sed -i \'s/#define IOKERNEL_MEMBW_UPDATE_FREQ.*/#define IOKERNEL_MEMBW_UPDATE_FREQ\\t\\t\\t{:d}/g\'"\
-        " ~/{}/iokernel/defs.h".format(RUNTIME_MEMBW_UPDATE_FREQ, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
-cmd = "sed -i \'s/#define IOKERNEL_MEMBW_UPDATE_FREQ.*/#define IOKERNEL_MEMBW_UPDATE_FREQ\\t\\t\\t0/g\'"\
-        " ~/{}/iokernel/defs.h".format(ARTIFACT_PATH)
-execute_remote([client_conn] + agent_conns, cmd, True)
-
-# Set the memory bandwidth moving average weight
-print("Updating the memory bandwidth estimate moving average weight in Caladan...")
-cmd = "sed -i \'s/#define IOKERNEL_MEMBW_EWMA_WEIGHT.*/#define IOKERNEL_MEMBW_EWMA_WEIGHT\\t\\t\\t{}/g\'"\
-        " ~/{}/iokernel/defs.h".format(RUNTIME_MEMBW_EWMA_WEIGHT, ARTIFACT_PATH)
-execute_remote([server_conn, client_conn] + agent_conns , cmd, True)
 
 # Set the memory semaphore parameters
 print("Updating the memory semaphore parameters...")
