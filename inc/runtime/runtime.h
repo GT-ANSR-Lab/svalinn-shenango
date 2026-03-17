@@ -20,12 +20,18 @@ extern int runtime_init(const char *cfgpath, thread_fn_t main_fn, void *arg);
 
 extern struct runtime_info *runtime_info;
 
+extern unsigned int maxks;
+extern unsigned int guaranteedks;
+extern atomic_t runningks;
+
 /**
  * runtime_queue_us - returns the us of packet queueing delay + runtime queueing
  * delay
  */
 static inline uint64_t runtime_queue_us(void)
 {
+	if ((unsigned int)atomic_read(&runningks) < maxks)
+		return 0;
 	return ACCESS_ONCE(runtime_info->congestion.delay_us);
 }
 
