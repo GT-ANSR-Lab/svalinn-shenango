@@ -1,16 +1,16 @@
 ## Notes
-* The benchmarks are tested on `xl170` machines on Cloudlab.
-* The image used to deploy the hosts is `urn:publicid:IDN+utah.cloudlab.us+image+creditrpc-PG0:breakwater-xl170-2`.
-* You can use [this](https://www.cloudlab.us/instantiate.php?project=CreditRPC&profile=breakwater-compact&version=0) profile to deploy an experiment on Cloudlab.
-* The setup scripts and test scripts assume that the workload is running on `xl170` machine on Cloudlab.
+* The benchmarks are tested on `xl170`, `c6525-25g` machines on Cloudlab and `asta`, `gon` on GT Cluster.
+* The image used to deploy the hosts is `urn:publicid:IDN+utah.cloudlab.us+image+cc-profiler-PG0:shubuntu24linux68mlnxofed`.
+* You can use [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile to deploy an experiment on Cloudlab.
 
 ## Setup steps
-* Deploy the nodes in Cloudlab using [this](https://www.cloudlab.us/instantiate.php?project=CreditRPC&profile=breakwater-compact&version=0) profile.
+* Deploy the nodes in Cloudlab using [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile.
 * SSH setup
   - Create SSH public-private key pairs on all the nodes using `ssh-keygen -t rsa`
   - Add the `~/.ssh/id_rsa.pub` of the node, where we are going to clone this repository and run the tests from (for e.g., node-1), to all the other nodes' `~/.ssh/authorized_keys`, including itself.
 * Clone this repository (run on node-1)
-  - `https://github.gatech.edu/HeteroBench/caladan-all.git`
+  - `git clone https://github.gatech.edu/HeteroBench/caladan-all.git`
+  - `git checkout <branch>` (branch will be either main or main-old)
 * Update config_remote.py (run on node-1)
   - Update `NODES` with the DNS names or IP addresses of the nodes in your test setup.
   - `NODES[0]` is the server, rest of the nodes are the clients.
