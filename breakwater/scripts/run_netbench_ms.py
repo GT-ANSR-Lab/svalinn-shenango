@@ -17,7 +17,6 @@ import pandas as pd
 # Core allocator settings
 RUNTIME_SCHED = "simple"
 RUNTIME_SCHED_THRESHOLD = 5
-RUNTIME_SCHED_CORES = "0-19"
 RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
@@ -34,10 +33,6 @@ MSEM_ALPHA = 0.8
 MSEM_TARGET_NORM_MEMBW = 1.0
 MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
-
-# Cores to be allocated to the application
-SERVER_RUNTIME_NUM_CORES = 18
-CLIENT_RUNTIME_NUM_CORES = 18
 
 # Total number of client connections
 NUM_CONNS = 100
@@ -139,20 +134,20 @@ server_conns = []
 for server in SERVERS:
     server_conn = paramiko.SSHClient()
     server_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    server_conn.connect(hostname = server, username = USERNAME, pkey = k)
+    server_conn.connect(hostname = server["name"], username = USERNAME, pkey = k)
     server_conns.append(server_conn)
 
 # connection to client
 client_conn = paramiko.SSHClient()
 client_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-client_conn.connect(hostname = CLIENT, username = USERNAME, pkey = k)
+client_conn.connect(hostname = CLIENT["name"], username = USERNAME, pkey = k)
 
 # connections to agents
 agent_conns = []
 for agent in AGENTS:
     agent_conn = paramiko.SSHClient()
     agent_conn.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    agent_conn.connect(hostname = agent, username = USERNAME, pkey = k)
+    agent_conn.connect(hostname = agent["name"], username = USERNAME, pkey = k)
     agent_conns.append(agent_conn)
 
 # Clean-up environment
@@ -169,7 +164,7 @@ print("Distributing configs...")
 for node in NODES:
     cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no ./ovld_configs/*.h"\
           " {}@{}:~/{}/breakwater/src/ >/dev/null"\
-          .format(KEY_LOCATION, USERNAME, node, ARTIFACT_PATH)
+          .format(KEY_LOCATION, USERNAME, node["name"], ARTIFACT_PATH)
     execute_local(cmd)
 
 # Replace the frequently files
@@ -179,7 +174,7 @@ for fil in FILES_TO_REPLACE:
         cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no ./{}"\
               " {}@{}:~/{}/{} >/dev/null"\
               .format(KEY_LOCATION, fil["src"], USERNAME,
-                      node, ARTIFACT_PATH, fil["dst"])
+                      node["name"], ARTIFACT_PATH, fil["dst"])
         execute_local(cmd)
 
 # Set the memory bandwidth update frequency
@@ -195,7 +190,7 @@ execute_remote([client_conn] + agent_conns, cmd, True)
 print("Updating the memory bandwidth estimate moving average weight in Caladan...")
 cmd = "sed -i \'s/#define IOKERNEL_MEMBW_EWMA_WEIGHT.*/#define IOKERNEL_MEMBW_EWMA_WEIGHT\\t\\t\\t{}/g\'"\
         " ~/{}/iokernel/defs.h".format(RUNTIME_MEMBW_EWMA_WEIGHT, ARTIFACT_PATH)
-execute_remote([server_conn, client_conn] + agent_conns , cmd, True)
+execute_remote(server_conns + [client_conn] + agent_conns , cmd, True)
 
 # Set the memory semaphore parameters
 print("Updating the memory semaphore parameters...")
@@ -203,42 +198,42 @@ cmd = "sed -i 's/\\(CTL_DELAY_US[[:space:]]*=[[:space:]]*\\)[0-9]\\+\\(\\.[0-9]\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_eg_impl.hpp"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_ts_impl.hpp"\
       .format(MSEM_CTL_DELAY_US, ARTIFACT_PATH, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 cmd = "sed -i 's/\\(ALPHA[[:space:]]*=[[:space:]]*\\)[0-9]\\+\\(\\.[0-9]\\+\\)\\?/\\1{}/'"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_eg_impl.hpp"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_ts_impl.hpp"\
       .format(MSEM_ALPHA, ARTIFACT_PATH, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 cmd = "sed -i 's/\\(TARGET_NORM_MEMBW[[:space:]]*=[[:space:]]*\\)[0-9]\\+\\(\\.[0-9]\\+\\)\\?/\\1{}/'"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_eg_impl.hpp"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_ts_impl.hpp"\
       .format(MSEM_TARGET_NORM_MEMBW, ARTIFACT_PATH, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 cmd = "sed -i 's/\\(EXPLR_PROB[[:space:]]*=[[:space:]]*\\)[0-9]\\+\\(\\.[0-9]\\+\\)\\?/\\1{}/'"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_eg_impl.hpp"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_ts_impl.hpp"\
       .format(MSEM_EXPLR_PROB, ARTIFACT_PATH, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 cmd = "sed -i 's/\\(REWARD_EWMA_WEIGHT[[:space:]]*=[[:space:]]*\\)[0-9]\\+\\(\\.[0-9]\\+\\)\\?/\\1{}/'"\
       " ~/{}/m-semaphore/inc/m_semaphore_mab_eg_impl.hpp"\
       .format(MSEM_REWARD_EWMA_WEIGHT, ARTIFACT_PATH)
-execute_remote([server_conn], cmd, True)
+execute_remote(server_conns, cmd, True)
 
 # Generating config files
 print("Generating Caladan config files...")
 for i in range(NUM_SERVERS):
     generate_caladan_config(server_conns[i], True, True,
-                            SERVER_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVER_RUNTIME_NUM_CORES,
-                            SERVER_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
+                            SERVER_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[i]["cores"],
+                            SERVERS[i]["cores"], RUNTIME_ENABLE_DIRECTPATH,
                             RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
-                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT_RUNTIME_NUM_CORES,
-                        CLIENT_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
+                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
+                        CLIENT["cores"], RUNTIME_ENABLE_DIRECTPATH,
                         True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
-                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT_RUNTIME_NUM_CORES,
-                            CLIENT_RUNTIME_NUM_CORES, RUNTIME_ENABLE_DIRECTPATH,
+                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
+                            AGENTS[i]["cores"], RUNTIME_ENABLE_DIRECTPATH,
                             True, False)
 
 # Rebuild Caladan
@@ -268,10 +263,11 @@ execute_remote(server_conns + [client_conn] + agent_conns, cmd, True)
 # Execute IOKernel
 iok_sessions = []
 print("Starting IOKernel on clients and server...")
-cmd = "cd ~/{} && sudo ./iokerneld {} nobw numanode {} nicpci {} >/dev/null 2>&1"\
-      .format(ARTIFACT_PATH, RUNTIME_SCHED, SERVERS[0]["numa"],
-              SERVERS[0]["nicpci"])
-iok_sessions += execute_remote([server_conn], cmd, False)
+for i in range(NUM_SERVERS):
+    cmd = "cd ~/{} && sudo ./iokerneld {} nobw numanode {} nicpci {} >/dev/null 2>&1"\
+          .format(ARTIFACT_PATH, RUNTIME_SCHED, SERVERS[i]["numa"],
+                  SERVERS[i]["nicpci"])
+    iok_sessions += execute_remote([agent_conns[i]], cmd, False)
 cmd = "cd ~/{} && sudo ./iokerneld {} nobw numanode {} nicpci {} >/dev/null 2>&1"\
       .format(ARTIFACT_PATH, RUNTIME_SCHED, CLIENT["numa"],
               CLIENT["nicpci"])
@@ -368,7 +364,7 @@ for agent_conn in agent_conns:
 print("Collecting outputs...")
 # Collect the client stats
 cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/output.csv ./"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH)
+        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH)
 execute_local(cmd)
 # Add the header to the raw output CSV file
 header = "num_threads,offered_load,throughput,cpu_bound_req_throughput,"\
@@ -397,42 +393,41 @@ execute_local(cmd)
 # Collect the all tasks file for load shift experiment
 if LOAD_SHIFT:
     cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/all_tasks.csv ./"\
-          " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH)
+          " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH)
     execute_local(cmd)
 
 # Collect the stdout from the server
 print("Collecting stdout of server...")
-cmd = "rsync -azh --info=progress2 -e \"ssh -i {} -o StrictHostKeyChecking=no -o"\
-        " UserKnownHostsFile=/dev/null\" {}@{}:~/{}/stdout.out {}/stdout.out.server >/dev/null"\
-        .format(KEY_LOCATION, USERNAME, SERVERS[0], ARTIFACT_PATH, output_dir)
-execute_local(cmd)
+for i in range(NUM_SERVERS):
+    cmd = "rsync -azh --info=progress2 -e \"ssh -i {} -o StrictHostKeyChecking=no -o"\
+          " UserKnownHostsFile=/dev/null\" {}@{}:~/{}/stdout.out {}/stdout.out.server{} >/dev/null"\
+          .format(KEY_LOCATION, USERNAME, SERVERS[i]["name"], ARTIFACT_PATH, output_dir, i)
+    execute_local(cmd)
 
 # Collect the stdout from the client
 print("Collecting stdout of client...")
 cmd = "rsync -azh --info=progress2 -e \"ssh -i {} -o StrictHostKeyChecking=no -o"\
         " UserKnownHostsFile=/dev/null\" {}@{}:~/{}/stdout.out {}/stdout.out.client >/dev/null"\
-        .format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH, output_dir)
+        .format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 
 # Collect the the Caladan configs
 print("Collecting the Caladan configs for server and client...")
-cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/server.config {}/"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, SERVERS[0], ARTIFACT_PATH, output_dir)
-execute_local(cmd)
+for i in range(NUM_SERVERS):
+    cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/server.config {}/server{}.config"\
+          " >/dev/null".format(KEY_LOCATION, USERNAME, SERVERS[i]["name"], ARTIFACT_PATH, output_dir, i)
+    execute_local(cmd)
 cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/client.config {}/"\
-        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT, ARTIFACT_PATH, output_dir)
+        " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH, output_dir)
 execute_local(cmd)
 
 # Collect the config used by this test run
 run_config = "runtime scheduler: {}\n".format(RUNTIME_SCHED)
 run_config += "runtime scheduler queueing threshold: {} us\n".format(RUNTIME_SCHED_THRESHOLD)
-run_config += "runtime scheduler managed cores: {}\n".format(RUNTIME_SCHED_CORES)
 run_config += "runtime scheduler spins cores for server: {}\n".format(RUNTIME_SPIN_SERVER)
 run_config += "runtime enable directpath networking: {}\n".format(RUNTIME_ENABLE_DIRECTPATH)
 run_config += "runtime disable watchdog: {}\n".format(RUNTIME_DISABLE_WATCHDOG)
 run_config += "overload algorithm: {}\n".format(OVERLOAD_ALG)
-run_config += "server runtime number of cores: {}\n".format(SERVER_RUNTIME_NUM_CORES)
-run_config += "client(s) runtime number of cores: {}\n".format(CLIENT_RUNTIME_NUM_CORES)
 run_config += "number of nodes: {}\n".format(len(NODES))
 run_config += "number of client nodes: {}\n".format(len(CLIENTS))
 run_config += "number of agent nodes: {}\n".format(len(AGENTS))
