@@ -20,7 +20,7 @@ RUNTIME_SCHED_THRESHOLD = 5
 RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
-RUNTIME_MEM_INFO_POLL_INTERVAL = 50
+RUNTIME_MEM_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
 OVERLOAD_ALG = "protego"
@@ -58,13 +58,6 @@ SLO = 315
 CPU_BOUND_WORK_ITR = 5000
 MEM_BOUND_WORK_ITR = 25
 CPU_BOUND_REQ_PCNT = 50
-
-# Client and Server Caladan Runtime IP addresses
-SERVER_RUNTIME_IP = "192.168.1.200"
-CLIENT_RUNTIME_IP = "192.168.1.100"
-AGENT_RUNTIME_IPS = [ "192.168.1." + str(101 + i) for i in range(NUM_AGENTS)]
-RUNTIME_NETMASK = "255.255.255.0"
-RUNTIME_GATEWAY = "192.168.1.1"
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
@@ -208,14 +201,14 @@ execute_remote([server_conn], cmd, True)
 # Generating config files
 print("Generating Caladan config files...")
 generate_caladan_config(server_conn, True, True,
-                        SERVER_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[0]["cores"],
+                        SERVERS[0]["ip"], SERVERS[0]["netmask"], SERVERS[0]["gateway"], SERVERS[0]["cores"],
                         RUNTIME_ENABLE_DIRECTPATH, RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
-                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
+                        CLIENT["ip"], CLIENT["netmask"], CLIENT["gateway"], CLIENT["cores"],
                         RUNTIME_ENABLE_DIRECTPATH, True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
-                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
+                            AGENTS[i]["ip"], AGENTS[i]["netmask"], AGENTS[i]["gateway"], AGENTS[i]["cores"],
                             RUNTIME_ENABLE_DIRECTPATH, True, False)
 
 # Rebuild Caladan
@@ -299,14 +292,14 @@ for offered_load in OFFERED_LOADS:
           .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS,
                   CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, CPU_BOUND_REQ_PCNT,
                   SLO, NUM_AGENTS, offered_load,
-                  "load_shift" if LOAD_SHIFT else "no_load_shift", SERVER_RUNTIME_IP)
+                  "load_shift" if LOAD_SHIFT else "no_load_shift", SERVERS[0]["ip"])
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
 
     # Start netbench agents
     print("\tExecuting netbench agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench {} client.config agent {}"\
-          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT["ip"])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin

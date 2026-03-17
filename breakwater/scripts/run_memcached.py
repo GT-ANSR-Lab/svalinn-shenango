@@ -58,13 +58,6 @@ MC_LKEY_COUNT = 5000
 MC_LKEY_SIZE = 1000000
 MC_SKEY_PCNT = 90
 
-# Client and Server Caladan Runtime IP addresses
-SERVER_RUNTIME_IP = "192.168.1.200"
-CLIENT_RUNTIME_IP = "192.168.1.100"
-AGENT_RUNTIME_IPS = [ "192.168.1." + str(101 + i) for i in range(NUM_AGENTS)]
-RUNTIME_NETMASK = "255.255.255.0"
-RUNTIME_GATEWAY = "192.168.1.1"
-
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
 FILES_TO_REPLACE = [
@@ -217,15 +210,14 @@ execute_remote([server_conn], cmd, True)
 # Generating config files
 print("Generating Caladan config files...")
 generate_caladan_config(server_conn, True, True,
-                        SERVER_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[0]["cores"],
-                        RUNTIME_ENABLE_DIRECTPATH,
-                        RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
+                        SERVERS[0]["ip"], SERVERS[0]["netmask"], SERVERS[0]["gateway"], SERVERS[0]["cores"],
+                        RUNTIME_ENABLE_DIRECTPATH, RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
-                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
+                        CLIENT["ip"], CLIENT["netmask"], CLIENT["gateway"], CLIENT["cores"],
                         RUNTIME_ENABLE_DIRECTPATH, True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
-                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
+                            AGENTS[i]["ip"], AGENTS[i]["netmask"], AGENTS[i]["gateway"], AGENTS[i]["cores"],
                             RUNTIME_ENABLE_DIRECTPATH, True, False)
 
 # Rebuild Caladan
@@ -314,7 +306,7 @@ for offered_load in OFFERED_LOADS:
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config client {:d} {}"\
             " BIMOD_VAR 10 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
-            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVER_RUNTIME_IP,
+            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"],
                     MC_SKEY_SIZE, MC_SKEY_COUNT, MC_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT,
                     SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
@@ -323,7 +315,7 @@ for offered_load in OFFERED_LOADS:
     # Start memcached agents
     print("\tExecuting Memcached agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config agent {}"\
-            " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+            " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT["ip"])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin

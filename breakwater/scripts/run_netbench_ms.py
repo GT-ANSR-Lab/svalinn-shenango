@@ -61,13 +61,6 @@ CPU_BOUND_WORK_ITR = 5000
 MEM_BOUND_WORK_ITR = 25
 CPU_BOUND_REQ_PCNT = 50
 
-# Client and Server Caladan Runtime IP addresses
-SERVER_RUNTIME_IPS = [ "192.168.1." + str(200 + i) for i in range(NUM_SERVERS)]
-CLIENT_RUNTIME_IP = "192.168.1.100"
-AGENT_RUNTIME_IPS = [ "192.168.1." + str(101 + i) for i in range(NUM_AGENTS)]
-RUNTIME_NETMASK = "255.255.255.0"
-RUNTIME_GATEWAY = "192.168.1.1"
-
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
 FILES_TO_REPLACE = [
@@ -214,15 +207,15 @@ execute_remote(server_conns, cmd, True)
 print("Generating Caladan config files...")
 for i in range(NUM_SERVERS):
     generate_caladan_config(server_conns[i], True, True,
-                            SERVER_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[i]["cores"],
+                            SERVERS[i]["ip"], SERVERS[i]["netmask"], SERVERS[i]["gateway"], SERVERS[i]["cores"],
                             RUNTIME_ENABLE_DIRECTPATH,
                             RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
-                        CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
+                        CLIENT["ip"], CLIENT["netmask"], CLIENT["gateway"], CLIENT["cores"],
                         RUNTIME_ENABLE_DIRECTPATH, True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
-                            AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
+                            AGENTS[i]["ip"], AGENTS[i]["netmask"], AGENTS[i]["gateway"], AGENTS[i]["cores"],
                             RUNTIME_ENABLE_DIRECTPATH, True, False)
 
 # Rebuild Caladan
@@ -300,7 +293,7 @@ for offered_load in OFFERED_LOADS:
     sleep(5)
 
     # Generate a string of IPs and connection info for all server replicas
-    server_ips_arg = " ".join(["{} 1".format(ip) for ip in SERVER_RUNTIME_IPS])
+    server_ips_arg = " ".join(["{} 1".format(server["ip"]) for server in SERVERS])
 
     # Start netbench client
     print("\tExecuting netbench client...")
@@ -317,7 +310,7 @@ for offered_load in OFFERED_LOADS:
     # Start netbench agents
     print("\tExecuting netbench agents...")
     cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} client.config agent {}"\
-          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT_RUNTIME_IP)
+          " >stdout.out 2>&1".format(ARTIFACT_PATH, OVERLOAD_ALG, CLIENT["ip"])
     client_agent_sessions += execute_remote(agent_conns, cmd, False)
 
     # Wait for some traffic to begin
