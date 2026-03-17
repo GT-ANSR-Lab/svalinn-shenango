@@ -40,6 +40,10 @@ MemPmcIntel::~MemPmcIntel() {
     m_pcm->cleanup();
 }
 
+uint64_t MemPmcIntel::GetMaxMemChan() {
+    return m_max_num_mem_ch;
+}
+
 uint64_t MemPmcIntel::GetActiveMemChan() {
     return m_num_mem_ch;
 }

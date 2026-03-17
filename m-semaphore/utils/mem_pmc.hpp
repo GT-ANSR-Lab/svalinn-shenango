@@ -9,6 +9,7 @@
 class MemPmcImpl {
 public:
     virtual ~MemPmcImpl() = default;
+    virtual uint64_t GetMaxMemChan() = 0;
     virtual uint64_t GetActiveMemChan() = 0;
     virtual uint64_t GetMemChanAccesses(int chan) = 0;
     virtual uint64_t GetMemAccesses() = 0;
@@ -22,6 +23,7 @@ public:
     MemPmc();
     ~MemPmc();
     void     Init();
+    uint64_t GetMaxMemChan();
     uint64_t GetActiveMemChan();
     uint64_t GetMemChanAccesses(int chan);
     uint64_t GetMemAccesses();

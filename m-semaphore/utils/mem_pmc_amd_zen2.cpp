@@ -155,6 +155,10 @@ MemPmcAmdZen2::~MemPmcAmdZen2() {
     }
 }
 
+uint64_t MemPmcAmdZen2::GetMaxMemChan() {
+    return m_max_num_mem_ch;
+}
+
 uint64_t MemPmcAmdZen2::GetActiveMemChan() {
     return m_num_mem_ch;
 }

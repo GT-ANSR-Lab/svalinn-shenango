@@ -19,6 +19,7 @@ public:
     MemPmcIntel();
     ~MemPmcIntel();
 
+    uint64_t GetMaxMemChan() override;
     uint64_t GetActiveMemChan() override;
     uint64_t GetMemChanAccesses(int chan) override;
     uint64_t GetMemAccesses() override;
