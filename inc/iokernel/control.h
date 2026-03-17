@@ -62,7 +62,7 @@ struct congestion_info {
 };
 
 struct memory_info {
-	double bw_usage;
+	uint64_t                glob_mem_accesses;
 };
 
 struct runtime_info {

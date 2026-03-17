@@ -18,7 +18,7 @@
 #include "sched.h"
 #include "ksched.h"
 #include "hw_timestamp.h"
-#include "pcm.h"
+#include "mem_pmc/mem_pmc.h"
 
 /* a bitmap of cores available to be allocated by the scheduler */
 DEFINE_BITMAP(sched_allowed_cores, NCPU);
@@ -694,43 +694,36 @@ rewake:
 }
 
 /**
- * sched_get_membw_usage - returns the memory bandwidth usage since the last
- * control cycle. The bandwidth is in MBps.
+ * sched_update_mem_info - Fetches the latest memory info from the hardware performance
+ * counters and propagates the info to the individual runtimes.
  */
+static void sched_update_mem_info(uint64_t now_time) {
 
-static double sched_get_membw_usage(uint64_t now_time) {
-
-	static bool init = false;
-	static uint32_t num_mc = 0;
-	static uint32_t last_bytes = 0;
 	static uint64_t last_time = 0;
+	uint64_t now_accesses = 0;
+	int i;
+	struct memory_info *info;
 
-	/* Get the number of memory channels only once */
-	if (!init) {
-		num_mc = pcm_iok_get_active_channel_count();
-		init = true;
+	/* If the memory info polling is not enabled */
+	if (IOKERNEL_MEM_INFO_POLL_INTERVAL <= 0) {
+		return;
 	}
 
-	/* Get the number of bytes accessed till now */
-	uint32_t now_bytes = pcm_iok_get_cas_count(0) * 64 * num_mc;
+	/* Check if we need to perform update or not */
+	if (now_time - last_time < IOKERNEL_MEM_INFO_POLL_INTERVAL) {
+		return;
+	}
 
-	/* Get the memory bandwidth */
-	double membw = (double)(now_bytes - last_bytes) / (double)(now_time - last_time);
+	/* Get the global memory accesses */
+	now_accesses = MemPmc_GetMemAccesses();
 
-	/* Save the info for this control cycle */
-	last_bytes = now_bytes;
+	/* Update the clients with the new info */
+	for (i = 0; i < dp.nr_clients; ++i) {
+		info = &dp.clients[i]->runtime_info->memory;
+		ACCESS_ONCE(info->glob_mem_accesses) = now_accesses;
+	}
+
 	last_time = now_time;
-
-	return membw;
-}
-
-/**
- * sched_report_membw_usage - reports the current memory bandwidth usage
- * to the runtime.
- */
-static void sched_report_membw_usage(struct proc *p, double membw) {
-	struct memory_info *info = &p->runtime_info->memory;
-	ACCESS_ONCE(info->bw_usage) = membw;
 }
 
 /**
@@ -744,15 +737,16 @@ void sched_poll(void)
 	uint64_t now;
 	int i, core, idle_cnt = 0;
 	struct proc *p;
-	double membw;
-	bool update_membw = false;
+
+	cur_tsc = rdtsc();
+	now = (cur_tsc - start_tsc) / cycles_per_us;
+
+	/* Update the memory info */
+	sched_update_mem_info(now);
 
 	/*
 	 * slow pass --- runs every IOKERNEL_POLL_INTERVAL
 	 */
-
-	cur_tsc = rdtsc();
-	now = (cur_tsc - start_tsc) / cycles_per_us;
 	if (now - last_time >= IOKERNEL_POLL_INTERVAL) {
 		int i;
 
@@ -761,22 +755,10 @@ void sched_poll(void)
 		/* retrieve current network device tick */
 		hw_timestamp_update();
 
-		/* Get the current memory bandwidth usage */
-		if (IOKERNEL_MEMBW_UPDATE_FREQ &&
-		    (stats[SCHED_RUN] % IOKERNEL_MEMBW_UPDATE_FREQ == 0)) {
-			membw = sched_get_membw_usage(now);
-			update_membw = true;
-		}
-
 		last_time = now;
 		for (i = 0; i < dp.nr_clients; i++) {
 			p = dp.clients[i];
 			sched_measure_delay(p);
-
-			/* Report the memory bandwidth usage to the runtime */
-			if (update_membw) {
-				sched_report_membw_usage(p, membw);
-			}
 		}
 	} else if (!cfg.noidlefastwake) {
 		/* check if any idle directpath runtimes have received I/Os */
@@ -1025,10 +1007,8 @@ int sched_init(void)
 	bitmap_for_each_set(sched_allowed_cores, NCPU, i)
 		sched_cores_tbl[sched_cores_nr++] = i;
 
-	/* initialize the PCM module */
-	if (IOKERNEL_MEMBW_UPDATE_FREQ && !cfg.nobw) {
-		log_info("sched: initializing PCM on NUMA node %d", managed_numa_node);
-		pcm_iok_init(managed_numa_node);
+	if (IOKERNEL_MEM_INFO_POLL_INTERVAL > 0) {
+		MemPmc_Init();
 	}
 
 	return 0;
