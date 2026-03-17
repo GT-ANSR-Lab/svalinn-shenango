@@ -32,6 +32,14 @@ for i in range(len(NODES)):
           .format(ARTIFACT_PATH, NODES[i]["type"])
     execute_remote(conns[i:i+1], cmd, True)
 
+# Perform any machine-specific setup
+for i in range(len(NODES)):
+    if NODES[i]["type"] == "xl170":
+        pass
+    elif NODES[i]["type"] == "c6525-25g":
+        cmd = "sudo modprobe amd-uncore"
+        execute_remote(conns[i:i+1], cmd, True)
+
 # build caladan
 print("Building Caladan...")
 cmd = "cd ~/{} && make clean && make -j16".format(ARTIFACT_PATH)
