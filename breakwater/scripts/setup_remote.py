@@ -55,7 +55,7 @@ for i in range(len(NODES)):
             .format(KEY_LOCATION, USERNAME, NODES[i]["name"], ARTIFACT_PATH)
     execute_local(cmd)
     # Must have a shenango patch for every node type used
-    cmd = "cd ~/{} && git apply host_patches/{}.patch"\
+    cmd = "cd ~/{} && git apply --allow-empty host_patches/{}.patch"\
           .format(ARTIFACT_PATH, NODES[i]["type"])
     execute_remote(conns[i:i+1], cmd, True)
 

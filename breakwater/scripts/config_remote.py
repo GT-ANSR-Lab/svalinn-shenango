@@ -4,18 +4,30 @@
 
 # Paremters for a few known machines
 #
-# xl170 cloudlab
+# xl170 (cloudlab)
 #   type: "xl170"
 #   numa: 0
 #   cores: 18
 #   nicpci: 0000:03:00.1
 #
-# c6525-25g cloudlab
+# c6525-25g (cloudlab)
 #   type: "c6525-25g"
 #   numa: 0
 #   cores: 30
 #   nicpci: 0000:41:00.0
 #
+# asta (gt cluster)
+#   type: "asta"
+#   numa: 0
+#   cores: 45
+#   nicpci: 0000:17:00.0
+#
+# gon (gt cluster)
+#   type: "gon"
+#   numa: 0
+#   cores: 45
+#   nicpci: 0000:17:00.1
+
 
 # The IP, Netmask, and Gateway are the IPs that we want to configure
 # in the Caladan runtime. This is not the machine's control IP address.
