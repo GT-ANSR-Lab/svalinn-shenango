@@ -92,6 +92,7 @@ struct shstat_raw {
 
 struct sstat {
     double cpu_usage;
+    double membw_usage;
     double rx_pps;
     double tx_pps;
     double rx_bps;
@@ -315,7 +316,7 @@ sstat_raw ReadRPCSStat() {
     ret = c->ReadFull(&resp, sizeof(resp));
     if (ret != static_cast<ssize_t>(sizeof(resp)))
         panic("sstat response failed, ret = %ld", ret);
-    return sstat_raw{resp.total, resp.busy, resp.num_cores,
+    return sstat_raw{resp.total, resp.busy, resp.mem_accesses, resp.num_cores,
             resp.max_cores, resp.winu_rx, resp.winu_tx, resp.win_tx,
             resp.req_rx, resp.req_dropped, resp.resp_tx};
 }
@@ -660,6 +661,9 @@ std::vector<work_unit> RunExperiment(
         uint64_t busy = s2.busy - s1.busy;
         ss->cpu_usage = static_cast<double>(busy) / static_cast<double>(total);
 
+	uint64_t mem_accesses = s2.mem_accesses - s1.mem_accesses;
+	ss->membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+
         uint64_t winu_rx_pkts = s2.winu_rx - s1.winu_rx;
         uint64_t winu_tx_pkts = s2.winu_tx - s1.winu_tx;
         uint64_t win_tx_wins = s2.win_tx - s1.win_tx;
@@ -692,7 +696,7 @@ std::vector<work_unit> RunExperiment(
 
 void PrintHeader(std::ostream& os) {
 
-    os << "num_threads," << "offered_load," << "throughput," << "goodput," << "cpu," << "min,"
+    os << "num_threads," << "offered_load," << "throughput," << "goodput," << "cpu," << "membw," << "min,"
        << "mean," << "p50," << "p90," << "p99,"  << "p999," << "p9999," << "max,"
        << "lmin," << "lmean," << "lp50," << "lp90," << "lp99," << "lp999," << "lp9999,"
        << "lmax," << "p1_win," << "mean_win," << "p99_win," << "p1_q," << "mean_q,"
@@ -811,7 +815,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
 
     std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
               << cs->offered_rps << "," << cs->rps << ","
-              << cs->goodput << "," << ss->cpu_usage << ","
+              << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
               << min << "," << mean << "," << p50 << ","
               << p90 << "," << p99 << "," << p999 << ","
               << p9999 << "," << max << "," << lmin << "," << lmean << ","
@@ -840,7 +844,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
 
     csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
             << cs->offered_rps << "," << cs->rps << ","
-            << cs->goodput << "," << ss->cpu_usage << ","
+            << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
             << min << "," << mean << "," << p50 << "," << p90 << "," << p99 << ","
             << p999 << "," << p9999 << "," << max << "," << lmin << "," << lmean << ","
             << lp50 << "," << lp90 << "," << lp99 << "," << lp999 << ","
@@ -873,6 +877,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
              << "\"throughput\":" << cs->rps << ","
              << "\"goodput\":" << cs->goodput << ","
              << "\"cpu\":" << ss->cpu_usage << ","
+             << "\"membw\":" << ss->membw_usage << ","
              << "\"min\":" << min << ","
              << "\"mean\":" << mean << ","
              << "\"p50\":" << p50 << ","

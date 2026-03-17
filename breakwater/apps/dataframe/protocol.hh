@@ -14,6 +14,7 @@ struct DataFrameStatReq {
 struct DataFrameStatResp {
     uint64_t total;
     uint64_t busy;
+    uint64_t mem_accesses;
     unsigned int num_cores;
     unsigned int max_cores;
     uint64_t winu_rx;
