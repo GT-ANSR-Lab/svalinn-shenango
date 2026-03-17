@@ -87,8 +87,7 @@ FILES_TO_REPLACE = [
 # Function to generate the workload-specific shenango config
 def generate_caladan_config(conn, is_server, latency_critical,
                             ip, netmask, gateway, num_cores,
-                            guaranteed_kthread, directpath,
-                            spin, disable_watchdog):
+                            directpath, spin, disable_watchdog):
     config_name = ""
     config_string = ""
 
@@ -105,7 +104,6 @@ def generate_caladan_config(conn, is_server, latency_critical,
             config_string += "\nruntime_priority lc"
         else:
             config_string += "\nruntime_priority be"
-        config_string += "\nruntime_guaranteed_kthreads {:d}".format(guaranteed_kthread)
         config_string += "\nruntime_qdelay_us {:d}".format(RUNTIME_SCHED_THRESHOLD)
     if spin:
         config_string += "\nruntime_spinning_kthreads {:d}".format(num_cores)
@@ -218,17 +216,14 @@ execute_remote([server_conn], cmd, True)
 print("Generating Caladan config files...")
 generate_caladan_config(server_conn, True, True,
                         SERVER_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, SERVERS[0]["cores"],
-                        SERVERS[0]["cores"], RUNTIME_ENABLE_DIRECTPATH,
-                        RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
+                        RUNTIME_ENABLE_DIRECTPATH, RUNTIME_SPIN_SERVER, RUNTIME_DISABLE_WATCHDOG)
 generate_caladan_config(client_conn, False, True,
                         CLIENT_RUNTIME_IP, RUNTIME_NETMASK, RUNTIME_GATEWAY, CLIENT["cores"],
-                        CLIENT["cores"], RUNTIME_ENABLE_DIRECTPATH,
-                        True, False)
+                        RUNTIME_ENABLE_DIRECTPATH, True, False)
 for i in range(NUM_AGENTS):
     generate_caladan_config(agent_conns[i], False, True,
                             AGENT_RUNTIME_IPS[i], RUNTIME_NETMASK, RUNTIME_GATEWAY, AGENTS[i]["cores"],
-                            AGENTS[i]["cores"], RUNTIME_ENABLE_DIRECTPATH,
-                            True, False)
+                            RUNTIME_ENABLE_DIRECTPATH, True, False)
 
 # Rebuild Caladan
 print("Building Caladan...")
