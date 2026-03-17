@@ -7909,6 +7909,7 @@ static void rpc_stat_worker(void *arg) {
     struct {
         uint64_t total;
         uint64_t busy;
+        uint64_t mem_accesses;
         unsigned int num_cores;
         unsigned int max_cores;
         uint64_t winu_rx;
@@ -7963,6 +7964,7 @@ static void rpc_stat_worker(void *arg) {
 
         sstat_raw.total = total;
         sstat_raw.busy = busy;
+        sstat_raw.mem_accesses = runtime_glob_mem_accesses();
         sstat_raw.num_cores = runtime_max_cores();
         sstat_raw.max_cores = (unsigned int)sysconf(_SC_NPROCESSORS_ONLN);
         sstat_raw.winu_rx = srpc_ops->srpc_stat_cupdate_rx(); // previously srpc_stat_winu_rx
