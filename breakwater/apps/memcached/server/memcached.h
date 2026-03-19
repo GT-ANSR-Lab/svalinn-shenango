@@ -9,6 +9,7 @@
 #include "config.h"
 #endif
 
+#include "base/atomic.h"
 #include "runtime.h"
 
 #include <sys/time.h>
@@ -472,7 +473,7 @@ typedef struct _stritem {
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
     int             nbytes;     /* size of data */
-    unsigned short  refcount;
+    int             refcount;
     uint8_t         nsuffix;    /* length of flags-and-length string */
     uint8_t         it_flags;   /* ITEM_* above */
     uint8_t         slabs_clsid;/* which slab class we're in */
@@ -501,7 +502,7 @@ typedef struct {
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
     int             nbytes;     /* size of data */
-    unsigned short  refcount;
+    int             refcount;
     uint8_t         nsuffix;    /* length of flags-and-length string */
     uint8_t         it_flags;   /* ITEM_* above */
     uint8_t         slabs_clsid;/* which slab class we're in */
@@ -520,7 +521,7 @@ typedef struct _strchunk {
     int              size;      /* available chunk space in bytes */
     int              used;      /* chunk space used */
     int              nbytes;    /* used. */
-    unsigned short   refcount;  /* used? */
+    int              refcount;  /* used? */
     uint8_t          orig_clsid; /* For obj hdr chunks slabs_clsid is fake. */
     uint8_t          it_flags;  /* ITEM_* above. */
     uint8_t          slabs_clsid; /* Same as above. */
@@ -752,8 +753,8 @@ bool item_lock_if_uncongested(uint32_t hv);
 void item_trylock_unlock(void *arg);
 void item_unlock(uint32_t hv);
 void pause_threads(enum pause_thread_types type);
-#define refcount_incr(it) ++(it->refcount)
-#define refcount_decr(it) --(it->refcount)
+#define refcount_incr(it) __sync_add_and_fetch(&(it)->refcount, 1)
+#define refcount_decr(it) __sync_sub_and_fetch(&(it)->refcount, 1)
 void STATS_LOCK(void);
 void STATS_UNLOCK(void);
 void threadlocal_stats_reset(void);
