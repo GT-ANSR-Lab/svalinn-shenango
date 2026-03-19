@@ -52,10 +52,12 @@ SLO = 1000
 
 # Memcached settings
 MC_MAX_ITEM_SIZE = 1024*1024*2
+MC_LO_SKEY_SIZE = 5
+MC_HI_SKEY_SIZE = 1000
 MC_SKEY_COUNT = 100000
-MC_SKEY_SIZE = 5
+MC_LO_LKEY_SIZE = 800000
+MC_HI_LKEY_SIZE = 1200000
 MC_LKEY_COUNT = 5000
-MC_LKEY_SIZE = 1000000
 MC_SKEY_PCNT = 100
 
 # Provides the opportunity to replace the files in all the machines
@@ -289,12 +291,12 @@ for offered_load in OFFERED_LOADS:
     print("\tStarting Memcached server...")
     cmd = "cd ~/{} && sudo numactl --membind={} ./breakwater/apps/memcached/server/memcached {} server.config"\
             " -p 8001 -v -c 32768 -m 64000 -b 32768 -I {}"\
-            " -o hashpower=18,prepopulate_bimod_keys,skey_size={},"\
-            "skey_count={},lkey_size={},lkey_count={},send_empty_responses{}"\
+            " -o hashpower=18,prepopulate_bimod_keys,lo_skey_size={},hi_skey_size={},"\
+            "skey_count={},lo_lkey_size={},hi_lkey_size={},lkey_count={},send_empty_responses{}"\
             "  >stdout.out 2>&1"\
             .format(ARTIFACT_PATH, SERVERS[0]["numa"], OVERLOAD_ALG,
-                    MC_MAX_ITEM_SIZE, MC_SKEY_SIZE,
-                    MC_SKEY_COUNT, MC_LKEY_SIZE, MC_LKEY_COUNT,
+                    MC_MAX_ITEM_SIZE, MC_LO_SKEY_SIZE, MC_HI_SKEY_SIZE,
+                    MC_SKEY_COUNT, MC_LO_LKEY_SIZE, MC_HI_LKEY_SIZE, MC_LKEY_COUNT,
                     ",use_msem" if MSEM_ENABLE else "")
     server_session = execute_remote([server_conn], cmd, False)[0]
 
@@ -305,10 +307,10 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting Memcached client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config client {:d} {}"\
-            " BIMOD_VAR 100000 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
+            " BIMOD_VAR 100000 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
             .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"],
-                    MC_SKEY_SIZE, MC_SKEY_COUNT, MC_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT,
-                    SLO, NUM_AGENTS, offered_load)
+                    MC_LO_SKEY_SIZE, MC_HI_SKEY_SIZE, MC_SKEY_COUNT, MC_LO_LKEY_SIZE,
+                    MC_HI_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT, SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
 
@@ -411,9 +413,11 @@ run_config += "number of connections: {}\n".format(NUM_CONNS)
 run_config += "offered load (in RPS): {}\n".format(OFFERED_LOADS)
 run_config += "RTT: {} us\n".format(NET_RTT)
 run_config += "SLO: {} us\n".format(SLO)
-run_config += "Short key size : {} bytes\n".format(MC_SKEY_SIZE)
+run_config += "Short key minimum size : {} bytes\n".format(MC_LO_SKEY_SIZE)
+run_config += "Short key maximum size : {} bytes\n".format(MC_HI_SKEY_SIZE)
 run_config += "Short key count : {} bytes\n".format(MC_SKEY_COUNT)
-run_config += "Large key size : {} bytes\n".format(MC_LKEY_SIZE)
+run_config += "Large key minimum size : {} bytes\n".format(MC_LO_LKEY_SIZE)
+run_config += "Large key maximum size : {} bytes\n".format(MC_HI_LKEY_SIZE)
 run_config += "Large key count : {} bytes\n".format(MC_LKEY_COUNT)
 run_config += "Short key percentage : {} %\n".format(MC_SKEY_PCNT)
 cmd = "echo \"{}\" > {}/run.config".format(run_config, output_dir)

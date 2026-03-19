@@ -416,9 +416,11 @@ struct settings {
     bool drop_privileges;   /* Whether or not to drop unnecessary process privileges */
     bool relaxed_privileges;   /* Relax process restrictions when running testapp */
     bool prepopulate_bimod_keys; /* Prepopulate the database with short and long keys on startup */
-    unsigned int skey_size;     /* Short keys size (valid if prepopulate_bimod_keys is set) */
+    unsigned int lo_skey_size;     /* Short keys minimum size (valid if prepopulate_bimod_keys is set) */
+    unsigned int hi_skey_size;     /* Short keys maximum size (valid if prepopulate_bimod_keys is set) */
     unsigned int skey_count;    /* Short keys count (valid if prepopulate_bimod_keys is set) */
-    unsigned int lkey_size;     /* Long keys size (valid if prepopulate_bimod_keys is set) */
+    unsigned int lo_lkey_size;     /* Long keys minimum size (valid if prepopulate_bimod_keys is set) */
+    unsigned int hi_lkey_size;     /* Long keys minimum size (valid if prepopulate_bimod_keys is set) */
     unsigned int lkey_count;    /* Long keys count (valid if prepopulate_bimod_keys is set) */
     bool send_empty_responses;  /* Do not send the keys/values in the response messages */
     bool use_msem;              /* Use memory semaphore for long requests */

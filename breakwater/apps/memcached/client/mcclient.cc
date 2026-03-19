@@ -58,12 +58,16 @@ namespace {
     int slo;
     // maximum key index
     int max_key_idx;
-    // Short (CPU-bound) key size
-    int skey_size = 0;
+	// Short (CPU-bound) key minimum size
+	int lo_skey_size = 0;
+	// Short (CPU-bound) key maximum size
+	int hi_skey_size = 0;
     // Short (CPU-bound) key count
     int skey_count = 0;
-    // Large (Memory-bound) key size
-    int lkey_size = 0;
+	// Large (Memory-bound) key minimum size
+	int lo_lkey_size = 0;
+	// Large (Memory-bound) key maximum size
+	int hi_lkey_size = 0;
     // Large (Memory-bound) key count
     int lkey_count = 0;
     // Short (CPU-bound) key percentage
@@ -179,6 +183,7 @@ namespace {
         uint64_t client_queue;
         bool is_skey;
         bool is_set;
+		int set_skey_size;
         int key;
     };
 
@@ -203,9 +208,11 @@ namespace {
                 BUG_ON(c->WriteFull(&total_agents, sizeof(total_agents)) <= 0);
                 BUG_ON(c->WriteFull(&slo, sizeof(slo)) <= 0);
                 BUG_ON(c->WriteFull(&max_key_idx, sizeof(max_key_idx)) <= 0);
-                BUG_ON(c->WriteFull(&skey_size, sizeof(skey_size)) <= 0);
+                BUG_ON(c->WriteFull(&lo_skey_size, sizeof(lo_skey_size)) <= 0);
+                BUG_ON(c->WriteFull(&hi_skey_size, sizeof(hi_skey_size)) <= 0);
                 BUG_ON(c->WriteFull(&skey_count, sizeof(skey_count)) <= 0);
-                BUG_ON(c->WriteFull(&lkey_size, sizeof(lkey_size)) <= 0);
+                BUG_ON(c->WriteFull(&lo_lkey_size, sizeof(lo_lkey_size)) <= 0);
+                BUG_ON(c->WriteFull(&hi_lkey_size, sizeof(hi_lkey_size)) <= 0);
                 BUG_ON(c->WriteFull(&lkey_count, sizeof(lkey_count)) <= 0);
                 BUG_ON(c->WriteFull(&skey_pcnt, sizeof(skey_pcnt)) <= 0);
                 BUG_ON(c->WriteFull(&offered_load, sizeof(offered_load)) <= 0);
@@ -228,9 +235,11 @@ namespace {
             BUG_ON(c->ReadFull(&total_agents, sizeof(total_agents)) <= 0);
             BUG_ON(c->ReadFull(&slo, sizeof(slo)) <= 0);
             BUG_ON(c->ReadFull(&max_key_idx, sizeof(max_key_idx)) <= 0);
-            BUG_ON(c->ReadFull(&skey_size, sizeof(skey_size)) <= 0);
+            BUG_ON(c->ReadFull(&lo_skey_size, sizeof(lo_skey_size)) <= 0);
+            BUG_ON(c->ReadFull(&hi_skey_size, sizeof(hi_skey_size)) <= 0);
             BUG_ON(c->ReadFull(&skey_count, sizeof(skey_count)) <= 0);
-            BUG_ON(c->ReadFull(&lkey_size, sizeof(lkey_size)) <= 0);
+            BUG_ON(c->ReadFull(&lo_lkey_size, sizeof(lo_lkey_size)) <= 0);
+            BUG_ON(c->ReadFull(&hi_lkey_size, sizeof(hi_lkey_size)) <= 0);
             BUG_ON(c->ReadFull(&lkey_count, sizeof(lkey_count)) <= 0);
             BUG_ON(c->ReadFull(&skey_pcnt, sizeof(skey_pcnt)) <= 0);
             BUG_ON(c->ReadFull(&offered_load, sizeof(offered_load)) <= 0);
@@ -435,6 +444,7 @@ namespace {
             wu.success = false;
             wu.is_skey = true;
             wu.is_set = false;
+			wu.set_skey_size = 0;
 
             if (wtype == 1) {   // SET
                 wu.is_set = true;
@@ -459,6 +469,7 @@ namespace {
                 if ((rand() % 100) < 82) {
                     // SET request
                     wu.is_set = true;
+					wu.set_skey_size = lo_skey_size + rand() % (hi_skey_size - lo_skey_size + 1);
                     wu.key = rand() % skey_count;
                 } else {
                     // GET request
@@ -534,6 +545,7 @@ namespace {
 
         char buf[4096];
         char value[4096];
+		assert(hi_skey_size < 4096);
 
         barrier();
         auto expstart = steady_clock::now();
@@ -586,10 +598,10 @@ namespace {
                 std::string key = (w[i].is_skey ? "skey-" : "lkey-") + \
                     std::to_string(w[i].key);
                 if (w[i].is_set) {
-                    GenerateRandomString(value, skey_size, w[i].hash);
+                    GenerateRandomString(value, w[i].set_skey_size, w[i].hash);
                     buflen = ConstructMemcachedSetReq(buf, 4096, i,
                                                       key.c_str(), key.length(),
-                                                      value, skey_size,
+                                                      value, w[i].set_skey_size,
                                                       w[i].is_skey);
                 } else {
                     buflen = ConstructMemcachedGetReq(buf, 4096, i,
@@ -1282,10 +1294,10 @@ int main(int argc, char *argv[]) {
         return -EINVAL;
     }
 
-    if (argc < 16) {
+    if (argc < 18) {
         std::cerr << "usage: [alg] [cfg_file] [client|agent] [#threads] [remote_ip]"
-                  << " [SET|GET|USR|BIMOD_GET] [max_key_idx] [skey_size] [skey_count]"
-                  << " [lkey_size] [lkey_count] [skey_pcnt]"
+                  << " [SET|GET|USR|BIMOD_GET] [max_key_idx] [lo_skey_size] [hi_skey_size] [skey_count]"
+                  << " [lo_lkey_size] [hi_lkey_size] [lkey_count] [skey_pcnt]"
                   << " [slo] [npeers] [offered_load]"
                   << std::endl;
         return -EINVAL;
@@ -1313,14 +1325,16 @@ int main(int argc, char *argv[]) {
     }
 
     max_key_idx = std::stoi(argv[7], nullptr, 0);
-    skey_size = std::stoi(argv[8], nullptr, 0);
-    skey_count = std::stoi(argv[9], nullptr, 0);
-    lkey_size = std::stoi(argv[10], nullptr, 0);
-    lkey_count = std::stoi(argv[11], nullptr, 0);
-    skey_pcnt = std::stoi(argv[12], nullptr, 0);
-    slo = std::stoi(argv[13], nullptr, 0);
-    total_agents += std::stoi(argv[14], nullptr, 0);
-    offered_load = std::stod(argv[15], nullptr);
+    lo_skey_size = std::stoi(argv[8], nullptr, 0);
+    hi_skey_size = std::stoi(argv[9], nullptr, 0);
+    skey_count = std::stoi(argv[10], nullptr, 0);
+    lo_lkey_size = std::stoi(argv[11], nullptr, 0);
+    hi_lkey_size = std::stoi(argv[12], nullptr, 0);
+    lkey_count = std::stoi(argv[13], nullptr, 0);
+    skey_pcnt = std::stoi(argv[14], nullptr, 0);
+    slo = std::stoi(argv[15], nullptr, 0);
+    total_agents += std::stoi(argv[16], nullptr, 0);
+    offered_load = std::stod(argv[17], nullptr);
 
     ret = runtime_init(argv[2], ClientHandler, NULL);
     if (ret) {

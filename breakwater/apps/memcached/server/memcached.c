@@ -354,9 +354,11 @@ static void settings_init(void) {
     settings.relaxed_privileges = false;
 #endif
     settings.prepopulate_bimod_keys = false;
-    settings.skey_size = 0;
+    settings.lo_skey_size = 0;
+    settings.hi_skey_size = 0;
     settings.skey_count = 0;
-    settings.lkey_size = 0;
+    settings.lo_lkey_size = 0;
+    settings.hi_lkey_size = 0;
     settings.lkey_count = 0;
     settings.send_empty_responses = false;
     settings.use_msem = false;
@@ -6468,9 +6470,11 @@ static void usage(void) {
 #endif
 #endif
            "   - prepopulate_bimod_keys: Populate the database with short and large KV pairs\n"
-           "   - skey_size: Short key size (valid if prepopulate_bimod_keys is set)\n"
+           "   - lo_skey_size: Short key minimum size (valid if prepopulate_bimod_keys is set)\n"
+           "   - hi_skey_size: Short key maximum size (valid if prepopulate_bimod_keys is set)\n"
            "   - skey_count: Short key count (valid if prepopulate_bimod_keys is set)\n"
-           "   - lkey_size: Long key size (valid if prepopulate_bimod_keys is set)\n"
+           "   - lo_lkey_size: Long key minimum size (valid if prepopulate_bimod_keys is set)\n"
+           "   - hi_lkey_size: Long key maximum size (valid if prepopulate_bimod_keys is set)\n"
            "   - lkey_count: Long key count (valid if prepopulate_bimod_keys is set)\n"
            "   - send_empty_responses: Responses will include only header\n"
            "   - use_msem: Use memory semaphore for long requests\n"
@@ -6813,9 +6817,11 @@ static void arg_parse(void *arg)
         RELAXED_PRIVILEGES,
 #endif
         PREPOPULATE_BIMOD_KEYS,
-        SKEY_SIZE,
+        LO_SKEY_SIZE,
+        HI_SKEY_SIZE,
         SKEY_COUNT,
-        LKEY_SIZE,
+        LO_LKEY_SIZE,
+        HI_LKEY_SIZE,
         LKEY_COUNT,
         SEND_EMPTY_RESPONSES,
         USE_MSEM,
@@ -6877,9 +6883,11 @@ static void arg_parse(void *arg)
         [RELAXED_PRIVILEGES] = "relaxed_privileges",
 #endif
         [PREPOPULATE_BIMOD_KEYS] = "prepopulate_bimod_keys",
-        [SKEY_SIZE] = "skey_size",
+        [LO_SKEY_SIZE] = "lo_skey_size",
+        [HI_SKEY_SIZE] = "hi_skey_size",
         [SKEY_COUNT] = "skey_count",
-        [LKEY_SIZE] = "lkey_size",
+        [LO_LKEY_SIZE] = "lo_lkey_size",
+        [HI_LKEY_SIZE] = "hi_lkey_size",
         [LKEY_COUNT] = "lkey_count",
         [SEND_EMPTY_RESPONSES] = "send_empty_responses",
         [USE_MSEM] = "use_msem",
@@ -7591,12 +7599,19 @@ static void arg_parse(void *arg)
             case PREPOPULATE_BIMOD_KEYS:
                 settings.prepopulate_bimod_keys = true;
                 break;
-            case SKEY_SIZE:
+            case LO_SKEY_SIZE:
                 if (subopts_value == NULL) {
-                    fprintf(stderr, "Missing skey_size argument\n");
+                    fprintf(stderr, "Missing lo_skey_size argument\n");
                     exit(1);
                 }
-                settings.skey_size = atoi(subopts_value);
+                settings.lo_skey_size = atoi(subopts_value);
+                break;
+            case HI_SKEY_SIZE:
+                if (subopts_value == NULL) {
+                    fprintf(stderr, "Missing hi_skey_size argument\n");
+                    exit(1);
+                }
+                settings.hi_skey_size = atoi(subopts_value);
                 break;
             case SKEY_COUNT:
                 if (subopts_value == NULL) {
@@ -7605,12 +7620,19 @@ static void arg_parse(void *arg)
                 }
                 settings.skey_count = atoi(subopts_value);
                 break;
-            case LKEY_SIZE:
+            case LO_LKEY_SIZE:
                 if (subopts_value == NULL) {
-                    fprintf(stderr, "Missing lkey_size argument\n");
+                    fprintf(stderr, "Missing lo_lkey_size argument\n");
                     exit(1);
                 }
-                settings.lkey_size = atoi(subopts_value);
+                settings.lo_lkey_size = atoi(subopts_value);
+                break;
+            case HI_LKEY_SIZE:
+                if (subopts_value == NULL) {
+                    fprintf(stderr, "Missing hi_lkey_size argument\n");
+                    exit(1);
+                }
+                settings.hi_lkey_size = atoi(subopts_value);
                 break;
             case LKEY_COUNT:
                 if (subopts_value == NULL) {
@@ -7758,30 +7780,48 @@ static void validate_settings(void)
     /* Validate the bimodal prepopulation arguments */
     if (settings.prepopulate_bimod_keys) {
         if (settings.skey_count) {
-            if (!settings.skey_size) {
-                fprintf(stderr, "ERROR: skey_size should be provided if skey_count != 0.\n");
+            if (!settings.lo_skey_size || !settings.hi_skey_size) {
+                fprintf(stderr, "ERROR: skey_sizes should be provided if skey_count != 0.\n");
+                exit(EX_USAGE);
+            }
+            if (settings.lo_skey_size > settings.hi_skey_size) {
+                fprintf(stderr, "ERROR: lo_skey_size > hi_skey_size.\n");
+                exit(EX_USAGE);
+            }
+            if (settings.hi_skey_size > settings.item_size_max) {
+                fprintf(stderr, "ERROR: skey_size is too big.\n");
                 exit(EX_USAGE);
             }
         } else {
-            settings.skey_size = 0;
+            settings.lo_skey_size = 0;
+            settings.hi_skey_size = 0;
         }
         if (settings.lkey_count) {
-            if (!settings.lkey_size) {
-                fprintf(stderr, "ERROR: lkey_size should be provided if lkey_count != 0.\n");
+            if (!settings.lo_lkey_size || !settings.hi_lkey_size) {
+                fprintf(stderr, "ERROR: lkey_sizes should be provided if lkey_count != 0.\n");
+                exit(EX_USAGE);
+            }
+            if (settings.lo_lkey_size > settings.hi_lkey_size) {
+                fprintf(stderr, "ERROR: lo_lkey_size > hi_lkey_size.\n");
+                exit(EX_USAGE);
+            }
+            if (settings.hi_lkey_size > settings.item_size_max) {
+                fprintf(stderr, "ERROR: lkey_size is too big.\n");
                 exit(EX_USAGE);
             }
         } else {
-            settings.skey_size = 0;
+            settings.lo_lkey_size = 0;
+            settings.hi_lkey_size = 0;
         }
         if (settings.skey_count && settings.lkey_count) {
-            if (settings.skey_size >= settings.lkey_size) {
+            if (settings.hi_skey_size >= settings.lo_lkey_size) {
                 fprintf(stderr, "ERROR: skey_size should be less than lkey_size.\n");
                 exit(EX_USAGE);
             }
         }
     } else {
-        if (settings.skey_size || settings.skey_count ||
-            settings.lkey_size || settings.lkey_count) {
+        if (settings.lo_skey_size || settings.hi_skey_size || settings.skey_count ||
+            settings.lo_lkey_size || settings.hi_lkey_size || settings.lkey_count) {
             fprintf(stderr, "ERROR: Need to set prepopulate_bimod_keys"
                     " while using skey and lkey options.\n");
             exit(EX_USAGE);
@@ -8050,7 +8090,9 @@ static void prepopulate_bimod_keys() {
     char key[KEY_MAX_LENGTH];
     int key_len;
     char *skey_val_buf = NULL;
+    int skey_size;
     char *lkey_val_buf = NULL;
+    int lkey_size;
     char *req_buf = NULL;
     int req_buf_size;
     int req_len;
@@ -8064,29 +8106,29 @@ static void prepopulate_bimod_keys() {
 
     /* Create the buffer for short key's values */
     if (settings.skey_count) {
-        skey_val_buf = malloc(settings.skey_size);
-        for (int i = 0; i < settings.skey_size; ++i) {
+        skey_val_buf = malloc(settings.hi_skey_size);
+        for (int i = 0; i < settings.hi_skey_size; ++i) {
             skey_val_buf[i] = (char)rand();
         }
     }
 
     /* Create the buffer for long key's values */
     if (settings.lkey_count) {
-        lkey_val_buf = malloc(settings.lkey_size);
-        for (int i = 0; i < settings.lkey_size; ++i) {
+        lkey_val_buf = malloc(settings.hi_lkey_size);
+        for (int i = 0; i < settings.hi_lkey_size; ++i) {
             lkey_val_buf[i] = (char)rand();
         }
     }
 
     /* Create the buffer for requests */
-    req_buf_size = (settings.skey_size > settings.lkey_size) ?
-        settings.skey_size : settings.lkey_size;
+    req_buf_size = (settings.hi_skey_size > settings.hi_lkey_size) ?
+        settings.hi_skey_size : settings.hi_lkey_size;
     req_buf_size += sizeof(protocol_binary_request_header) + 8 + KEY_MAX_LENGTH;
     req_buf = malloc(req_buf_size);
 
     /* Create the buffer for responses */
-    resp_buf_size = (settings.skey_size > settings.lkey_size) ?
-        settings.skey_size : settings.lkey_size;
+    resp_buf_size = (settings.hi_skey_size > settings.hi_lkey_size) ?
+        settings.hi_skey_size : settings.hi_lkey_size;
     resp_buf_size += sizeof(protocol_binary_response_header) + 8 + KEY_MAX_LENGTH;
     resp_buf = malloc(resp_buf_size);
 
@@ -8094,11 +8136,12 @@ static void prepopulate_bimod_keys() {
     for (int i = 0; i < settings.skey_count; ++i) {
 
         key_len = snprintf(key, KEY_MAX_LENGTH, "skey-%d", i);
+        skey_size = settings.lo_skey_size + rand() % (settings.hi_skey_size - settings.lo_skey_size + 1);
 
         /* Construct the request buffer */
         req_len = construct_set_req(req_buf, req_buf_size, 0,
                                     key, key_len,
-                                    skey_val_buf, settings.skey_size);
+                                    skey_val_buf, skey_size);
         BUG_ON(!req_len);
 
         conn *c = tcache_alloc(&udp_conn_tcache_pt);
@@ -8118,10 +8161,12 @@ static void prepopulate_bimod_keys() {
 
         key_len = snprintf(key, KEY_MAX_LENGTH, "lkey-%d", i);
 
+        lkey_size = settings.lo_lkey_size + rand() % (settings.hi_lkey_size - settings.lo_lkey_size + 1);
+
         /* Construct the request buffer */
         req_len = construct_set_req(req_buf, req_buf_size, 0,
                                     key, key_len,
-                                    lkey_val_buf, settings.lkey_size);
+                                    lkey_val_buf, lkey_size);
         BUG_ON(!req_len);
 
         conn *c = tcache_alloc(&udp_conn_tcache_pt);
