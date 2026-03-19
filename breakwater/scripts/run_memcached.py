@@ -17,7 +17,7 @@ import pandas as pd
 # Core allocator settings
 RUNTIME_SCHED = "simple"
 RUNTIME_SCHED_THRESHOLD = 5
-RUNTIME_SPIN_SERVER = True
+RUNTIME_SPIN_SERVER = False
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_MEM_INFO_POLL_INTERVAL = 0
@@ -42,7 +42,7 @@ NUM_AGENTS = len(AGENTS)
 
 # List of offered load
 NUM_SAMPLES = 10
-MAX_OFFERED_LOAD = 1200000
+MAX_OFFERED_LOAD = 1000000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 
 # Network RTT on the testbed
@@ -56,7 +56,7 @@ MC_SKEY_COUNT = 100000
 MC_SKEY_SIZE = 5
 MC_LKEY_COUNT = 5000
 MC_LKEY_SIZE = 1000000
-MC_SKEY_PCNT = 90
+MC_SKEY_PCNT = 100
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
@@ -305,7 +305,7 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting Memcached client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config client {:d} {}"\
-            " BIMOD_VAR 10 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
+            " BIMOD_VAR 100000 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
             .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"],
                     MC_SKEY_SIZE, MC_SKEY_COUNT, MC_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT,
                     SLO, NUM_AGENTS, offered_load)
@@ -365,7 +365,7 @@ header = "num_clients,offered_load,throughput,set_throughput,skey_throughput,lke
          ",min,mean,set_mean,skey_mean,lkey_mean,p50,set_p50,skey_p50,lkey_p50,p90,set_p90,skey_p90,lkey_p90,p99,set_p99,skey_p99,lkey_p99,p999,p9999"\
          ",max,lmin,lmean,lp50,lp90,lp99,lp999,lp9999,lmax,p1_win,mean_win,p99_win,p1_q,mean_q,p99_q,server:rx_pps"\
          ",server:tx_pps,server:rx_bps,server:tx_bps,server:rx_drops_pps,server:rx_ooo_pps"\
-         ",server:winu_rx_pps,server:winu_tx_pps,server:win_tx_wps,server:req_rx_pps"\
+         ",server:winu_rx_pps,server:winu_tx_pps,server:win_tx_wps,server:req_rx_pps,server:req_drop_rate"\
          ",server:resp_tx_pps,client:min_tput,client:max_tput"\
          ",client:winu_rx_pps,client:winu_tx_pps,client:resp_rx_pps,client:req_tx_pps"\
          ",client:win_expired_wps,client:req_dropped_rps"
