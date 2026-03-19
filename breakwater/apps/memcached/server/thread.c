@@ -603,6 +603,7 @@ item *item_get(const char *key, const size_t nkey, conn *c, const bool do_update
     uint32_t hv;
     hv = hash(key, nkey);
     if (!item_lock_if_uncongested(hv)) {
+        srpc_ops->srpc_drop();
         return NULL;
     }
     it = do_item_get(key, nkey, hv, c, do_update);
@@ -615,6 +616,7 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime, conn *c) {
     uint32_t hv;
     hv = hash(key, nkey);
     if (!item_lock_if_uncongested(hv)) {
+        srpc_ops->srpc_drop();
         return NULL;
     }
     it = do_item_touch(key, nkey, exptime, hv, c);

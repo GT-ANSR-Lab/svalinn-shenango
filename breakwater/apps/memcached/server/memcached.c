@@ -1745,9 +1745,6 @@ static void process_bin_get_or_touch(conn *c) {
         it = item_touch(key, nkey, realtime(exptime), c);
     } else {
         it = item_get(key, nkey, c, DO_UPDATE);
-        if (!it) {
-            srpc_ops->srpc_drop();
-        }
     }
 
     if (it) {

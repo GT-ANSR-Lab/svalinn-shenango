@@ -23,7 +23,7 @@ unsigned int slabs_clsid(const size_t size);
 
 /** Allocate object of given length. 0 on error */ /*@null@*/
 #define SLABS_ALLOC_NO_NEWPAGE 1
-void *slabs_alloc(const size_t size, unsigned int id, uint64_t *total_bytes, unsigned int flags);
+void *slabs_alloc(const size_t size, unsigned int id, uint64_t *total_bytes, unsigned int flags, bool *lock_dropped);
 
 /** Free previously allocated object */
 void slabs_free(void *ptr, size_t size, unsigned int id);

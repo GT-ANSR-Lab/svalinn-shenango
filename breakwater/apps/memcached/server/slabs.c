@@ -594,14 +594,15 @@ static void memory_release() {
 }
 
 void *slabs_alloc(size_t size, unsigned int id, uint64_t *total_bytes,
-        unsigned int flags) {
+        unsigned int flags, bool *lock_dropped) {
     void *ret;
 
-    /* mutex_lock(&slabs_lock); */
     if (!mutex_lock_if_uncongested(&slabs_lock)) {
         srpc_ops->srpc_drop();
+        if (lock_dropped) *lock_dropped = true;
         return NULL;
     }
+    if (lock_dropped) *lock_dropped = false;
     ret = do_slabs_alloc(size, id, total_bytes, flags);
     mutex_unlock(&slabs_lock);
     return ret;

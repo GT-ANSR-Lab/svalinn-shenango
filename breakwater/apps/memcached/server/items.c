@@ -190,12 +190,16 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
      * This also gives one fewer code path for slab alloc/free
      */
     for (i = 0; i < 10; i++) {
+        bool lock_dropped;
         uint64_t total_bytes;
         /* Try to reclaim memory first */
         if (!settings.lru_segmented) {
             lru_pull_tail(id, COLD_LRU, 0, 0, 0, NULL);
         }
-        it = slabs_alloc(ntotal, id, &total_bytes, 0);
+        it = slabs_alloc(ntotal, id, &total_bytes, 0, &lock_dropped);
+        if (it == NULL && lock_dropped) {
+            return NULL;
+        }
 
         if (settings.temp_lru)
             total_bytes -= temp_lru_size(id);
