@@ -8,13 +8,16 @@
 #include <unistd.h>
 #include <thread>
 #include <random>
+#include <cmath>
 
 // Program settings
 struct {
     std::string db_path = "";
-    int skey_size = 0;
+    int lo_skey_size = 0;
+    int hi_skey_size = 0;
     int skey_count = 0;
-    int lkey_size = 0;
+    int lo_lkey_size = 0;
+    int hi_lkey_size = 0;
     int lkey_count = 0;
     int nb_threads = 16;
 } g_settings;
@@ -23,9 +26,11 @@ struct {
 // Help message
 void Help() {
     std::cerr << "Usage: rocksdb_createdb --db_path <Path to tmpfs rocksdb instance> " << std::endl
-              << "       --skey_size <Size of short keys> " << std::endl
+              << "       --lo_skey_size <Minimum size of short keys> " << std::endl
+              << "       --hi_skey_size <Maximum size of short keys> " << std::endl
               << "       --skey_count <Number of short keys> " << std::endl
-              << "       --lkey_size <Size of large keys> " << std::endl
+              << "       --lo_lkey_size <Minimum size of long keys> " << std::endl
+              << "       --hi_lkey_size <Maximum size of long keys> " << std::endl
               << "       --lkey_count <Number of large keys> " << std::endl
               << "       --nb_threads <number of threads used to populate the DB> " << std::endl;
 }
@@ -77,7 +82,6 @@ void PopulateRocksDB(rocksdb::DB *db) {
     std::vector<std::thread> threads;
 
     // Populate the small keys
-    std::string skey_val = generateRandomString(g_settings.skey_size);
     int skeys_per_thread = g_settings.skey_count / g_settings.nb_threads;
     int curr_skey_start = 0;
     int curr_skey_end = skeys_per_thread;
@@ -93,14 +97,25 @@ void PopulateRocksDB(rocksdb::DB *db) {
 
         threads.emplace_back([&](int key_start, int key_end) {
 
+            static thread_local std::mt19937 rng{std::random_device{}()};
+            std::uniform_int_distribution<int> dist(g_settings.lo_skey_size,
+                                                    g_settings.hi_skey_size);
+
             auto write_opts = rocksdb::WriteOptions();
             write_opts.disableWAL = true;
 
+            std::string key;
+            key.reserve(5 + 16); // "skey-" + 16 digits
+
             for (int k = key_start; k < key_end; k++) {
                 // Construct the key string
-                std::string key = "skey-" + std::to_string(k);
+                std::string num = std::to_string(k);
+                key = "skey-";
+                key.append(16 - num.length(), '0');
+                key += num;
 
                 // Write to the DB
+                std::string skey_val = generateRandomString(dist(rng));
                 db->Put(write_opts, key, skey_val);
             }
         }, curr_skey_start, curr_skey_end);
@@ -114,7 +129,6 @@ void PopulateRocksDB(rocksdb::DB *db) {
     }
 
     // Populate the large keys
-    std::string lkey_val = generateRandomString(g_settings.lkey_size);
     int lkeys_per_thread = g_settings.lkey_count / g_settings.nb_threads;
     int curr_lkey_start = 0;
     int curr_lkey_end = lkeys_per_thread;
@@ -129,14 +143,25 @@ void PopulateRocksDB(rocksdb::DB *db) {
 
         threads.emplace_back([&](int key_start, int key_end) {
 
+            static thread_local std::mt19937 rng{std::random_device{}()};
+            std::uniform_int_distribution<int> dist(g_settings.lo_lkey_size,
+                                                    g_settings.hi_lkey_size);
+
             auto write_opts = rocksdb::WriteOptions();
             write_opts.disableWAL = true;
 
+            std::string key;
+            key.reserve(5 + 16); // "lkey-" + 16 digits
+
             for (int k = key_start; k < key_end; k++) {
                 // Construct the key string
-                std::string key = "lkey-" + std::to_string(k);
+                std::string num = std::to_string(k);
+                key = "lkey-";
+                key.append(16 - num.length(), '0');
+                key += num;
 
                 // Write to the DB
+                std::string lkey_val = generateRandomString(dist(rng));
                 db->Put(write_opts, key, lkey_val);
             }
         }, curr_lkey_start, curr_lkey_end);
@@ -160,21 +185,33 @@ void PopulateRocksDB(rocksdb::DB *db) {
 void VerifyRocksDB(rocksdb::DB *db) {
 
     rocksdb::ReadOptions read_opts = {};
+    std::string key;
+    key.reserve(5 + 16); // "(s/l)key-" + 16 digits
 
     for (int i = 0; i < g_settings.skey_count; i++) {
-        std::string key = "skey-" + std::to_string(i);
+        std::string num = std::to_string(i);
+        key = "skey-";
+        key.append(16 - num.length(), '0');
+        key += num;
+
         std::string value;
         rocksdb::Status status = db->Get(read_opts, key, &value);
         assert(status.ok());
-        assert(value.size() == g_settings.skey_size);
+        assert(value.size() >= g_settings.lo_skey_size);
+        assert(value.size() <= g_settings.hi_skey_size);
     }
 
     for (int i = 0; i < g_settings.lkey_count; i++) {
-        std::string key = "lkey-" + std::to_string(i);
+        std::string num = std::to_string(i);
+        key = "lkey-";
+        key.append(16 - num.length(), '0');
+        key += num;
+
         std::string value;
         rocksdb::Status status = db->Get(read_opts, key, &value);
         assert(status.ok());
-        assert(value.size() == g_settings.lkey_size);
+        assert(value.size() >= g_settings.lo_lkey_size);
+        assert(value.size() <= g_settings.hi_lkey_size);
     }
 }
 
@@ -185,9 +222,11 @@ void ParseArguments(int argc, char *argv[]) {
     // Command line arguments
     static struct option long_opts[] = {
         {"db_path", required_argument, nullptr, 0},
-        {"skey_size", required_argument, nullptr, 0},
+        {"lo_skey_size", required_argument, nullptr, 0},
+        {"hi_skey_size", required_argument, nullptr, 0},
         {"skey_count", required_argument, nullptr, 0},
-        {"lkey_size", required_argument, nullptr, 0},
+        {"lo_lkey_size", required_argument, nullptr, 0},
+        {"hi_lkey_size", required_argument, nullptr, 0},
         {"lkey_count", required_argument, nullptr, 0},
         {"nb_threads", required_argument, nullptr, 0},
         {nullptr, 0, nullptr, 0} // End of options
@@ -213,12 +252,16 @@ void ParseArguments(int argc, char *argv[]) {
 
         if (opt_name == "db_path") {
             g_settings.db_path = opt_arg;
-        } else if (opt_name == "skey_size") {
-            g_settings.skey_size = std::stoi(opt_arg);
+        } else if (opt_name == "lo_skey_size") {
+            g_settings.lo_skey_size = std::stoi(opt_arg);
+        } else if (opt_name == "hi_skey_size") {
+            g_settings.hi_skey_size = std::stoi(opt_arg);
         } else if (opt_name == "skey_count") {
             g_settings.skey_count = std::stoi(opt_arg);
-        } else if (opt_name == "lkey_size") {
-            g_settings.lkey_size = std::stoi(opt_arg);
+        } else if (opt_name == "lo_lkey_size") {
+            g_settings.lo_lkey_size = std::stoi(opt_arg);
+        } else if (opt_name == "hi_lkey_size") {
+            g_settings.hi_lkey_size = std::stoi(opt_arg);
         } else if (opt_name == "lkey_count") {
             g_settings.lkey_count = std::stoi(opt_arg);
         } else if (opt_name == "nb_threads") {
@@ -228,9 +271,13 @@ void ParseArguments(int argc, char *argv[]) {
 
     // Validate the arguments
     if ((g_settings.db_path == "") ||
-        (g_settings.skey_size == 0) ||
+        (g_settings.lo_skey_size == 0) ||
+        (g_settings.hi_skey_size == 0) ||
+        (g_settings.lo_skey_size > g_settings.hi_skey_size) ||
         (g_settings.skey_count == 0) ||
-        (g_settings.lkey_size == 0) ||
+        (g_settings.lo_lkey_size == 0) ||
+        (g_settings.hi_lkey_size == 0) ||
+        (g_settings.lo_lkey_size > g_settings.hi_lkey_size) ||
         (g_settings.lkey_count == 0) ||
         (g_settings.nb_threads == 0)) {
         Help();

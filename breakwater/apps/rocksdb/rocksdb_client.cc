@@ -47,12 +47,16 @@ int threads;
 netaddr raddr, master;
 // RPC service level objective (in us)
 int slo;
-// Short (CPU-bound) key size
-int skey_size = 0;
+// Short (CPU-bound) key minimum size
+int lo_skey_size = 0;
+// Short (CPU-bound) key maximum size
+int hi_skey_size = 0;
 // Short (CPU-bound) key count
 int skey_count = 0;
-// Large (Memory-bound) key size
-int lkey_size = 0;
+// Large (Memory-bound) key minimum size
+int lo_lkey_size = 0;
+// Large (Memory-bound) key maximum size
+int hi_lkey_size = 0;
 // Large (Memory-bound) key count
 int lkey_count = 0;
 // Short (CPU-bound) key percentage
@@ -171,9 +175,11 @@ public:
             BUG_ON(c->WriteFull(&raddr, sizeof(raddr)) <= 0);
             BUG_ON(c->WriteFull(&total_agents, sizeof(total_agents)) <= 0);
             BUG_ON(c->WriteFull(&slo, sizeof(slo)) <= 0);
-            BUG_ON(c->WriteFull(&skey_size, sizeof(skey_size)) <= 0);
+            BUG_ON(c->WriteFull(&lo_skey_size, sizeof(lo_skey_size)) <= 0);
+            BUG_ON(c->WriteFull(&hi_skey_size, sizeof(hi_skey_size)) <= 0);
             BUG_ON(c->WriteFull(&skey_count, sizeof(skey_count)) <= 0);
-            BUG_ON(c->WriteFull(&lkey_size, sizeof(lkey_size)) <= 0);
+            BUG_ON(c->WriteFull(&lo_lkey_size, sizeof(lo_lkey_size)) <= 0);
+            BUG_ON(c->WriteFull(&hi_lkey_size, sizeof(hi_lkey_size)) <= 0);
             BUG_ON(c->WriteFull(&lkey_count, sizeof(lkey_count)) <= 0);
             BUG_ON(c->WriteFull(&skey_pcnt, sizeof(skey_pcnt)) <= 0);
             BUG_ON(c->WriteFull(&offered_load, sizeof(offered_load)) <= 0);
@@ -194,9 +200,11 @@ public:
         BUG_ON(c->ReadFull(&raddr, sizeof(raddr)) <= 0);
         BUG_ON(c->ReadFull(&total_agents, sizeof(total_agents)) <= 0);
         BUG_ON(c->ReadFull(&slo, sizeof(slo)) <= 0);
-        BUG_ON(c->ReadFull(&skey_size, sizeof(skey_size)) <= 0);
+        BUG_ON(c->ReadFull(&lo_skey_size, sizeof(lo_skey_size)) <= 0);
+        BUG_ON(c->ReadFull(&hi_skey_size, sizeof(hi_skey_size)) <= 0);
         BUG_ON(c->ReadFull(&skey_count, sizeof(skey_count)) <= 0);
-        BUG_ON(c->ReadFull(&lkey_size, sizeof(lkey_size)) <= 0);
+        BUG_ON(c->ReadFull(&lo_lkey_size, sizeof(lo_lkey_size)) <= 0);
+        BUG_ON(c->ReadFull(&hi_lkey_size, sizeof(hi_lkey_size)) <= 0);
         BUG_ON(c->ReadFull(&lkey_count, sizeof(lkey_count)) <= 0);
         BUG_ON(c->ReadFull(&skey_pcnt, sizeof(skey_pcnt)) <= 0);
         BUG_ON(c->ReadFull(&offered_load, sizeof(offered_load)) <= 0);
@@ -1070,10 +1078,11 @@ int main(int argc, char *argv[]) {
         return -EINVAL;
     }
 
-    if (argc < 15) {
+    if (argc < 17) {
         std::cerr << "usage: [cfg_file] [olcalg] [client|agent] [#threads]"
                   << " [remote_ip] [remote_port]"
-                  << " [skey_size] [skey_count] [lkey_size] [lkey_count] [skey_pcnt]"
+                  << " [lo_skey_size] [hi_skey_size] [skey_count]"
+				  << " [lo_lkey_size] [hi_lkey_size] [lkey_count] [skey_pcnt]"
                   << " [slo] [npeers] [offered_load]"
                   << std::endl;
         return -EINVAL;
@@ -1083,14 +1092,16 @@ int main(int argc, char *argv[]) {
     ret = StringToAddr(argv[5], &raddr.ip);
     if (ret) return -EINVAL;
     raddr.port = std::stoi(argv[6]);
-    skey_size = std::stoi(argv[7], nullptr, 0);
-    skey_count = std::stoi(argv[8], nullptr, 0);
-    lkey_size = std::stoi(argv[9], nullptr, 0);
-    lkey_count = std::stoi(argv[10], nullptr, 0);
-    skey_pcnt = std::stoi(argv[11], nullptr, 0);
-    slo = std::stoi(argv[12], nullptr, 0);
-    total_agents += std::stoi(argv[13], nullptr, 0);
-    offered_load = std::stod(argv[14], nullptr);
+    lo_skey_size = std::stoi(argv[7], nullptr, 0);
+    hi_skey_size = std::stoi(argv[8], nullptr, 0);
+    skey_count = std::stoi(argv[9], nullptr, 0);
+    lo_lkey_size = std::stoi(argv[10], nullptr, 0);
+    hi_lkey_size = std::stoi(argv[11], nullptr, 0);
+    lkey_count = std::stoi(argv[12], nullptr, 0);
+    skey_pcnt = std::stoi(argv[13], nullptr, 0);
+    slo = std::stoi(argv[14], nullptr, 0);
+    total_agents += std::stoi(argv[15], nullptr, 0);
+    offered_load = std::stod(argv[16], nullptr);
 
     ret = runtime_init(argv[1], ClientHandler, NULL);
     if (ret) {

@@ -39,9 +39,11 @@ struct {
     std::string ovld_cntl_algo = "nocontrol";
     int port = 0;
     std::string db_path = "";
-    int skey_size = 0;
+    int lo_skey_size = 0;
+    int hi_skey_size = 0;
     int skey_count = 0;
-    int lkey_size = 0;
+    int lo_lkey_size = 0;
+    int hi_lkey_size = 0;
     int lkey_count = 0;
     bool use_msem = false;
 } g_settings;
@@ -66,9 +68,11 @@ void Help() {
               << "       --ovld_cntl_algo <Overload controller algorithm> " << std::endl
               << "       --port <Server's TCP port number> " << std::endl
               << "       --db_path <Path to tmpfs rocksdb instance> " << std::endl
-              << "       --skey_size <Size of short keys> " << std::endl
+              << "       --lo_skey_size <Minimum size of short keys> " << std::endl
+              << "       --hi_skey_size <Maximum size of short keys> " << std::endl
               << "       --skey_count <Number of short keys> " << std::endl
-              << "       --lkey_size <Size of large keys> " << std::endl
+              << "       --lo_lkey_size <Minimum size of long keys> " << std::endl
+              << "       --hi_lkey_size <Maximum size of long keys> " << std::endl
               << "       --lkey_count <Number of large keys> " << std::endl
               << "       --use_msem" << std::endl;
 }
@@ -83,9 +87,11 @@ void ParseArguments(int argc, char *argv[]) {
         {"ovld_cntl_algo", required_argument, nullptr, 0},
         {"port", required_argument, nullptr, 0},
         {"db_path", required_argument, nullptr, 0},
-        {"skey_size", required_argument, nullptr, 0},
+        {"lo_skey_size", required_argument, nullptr, 0},
+        {"hi_skey_size", required_argument, nullptr, 0},
         {"skey_count", required_argument, nullptr, 0},
-        {"lkey_size", required_argument, nullptr, 0},
+        {"lo_lkey_size", required_argument, nullptr, 0},
+        {"hi_lkey_size", required_argument, nullptr, 0},
         {"lkey_count", required_argument, nullptr, 0},
         {"use_msem", no_argument, nullptr, 0},
         {nullptr, 0, nullptr, 0} // End of options
@@ -117,12 +123,16 @@ void ParseArguments(int argc, char *argv[]) {
             g_settings.port = std::stoi(opt_arg);
         } else if (opt_name == "db_path") {
             g_settings.db_path = opt_arg;
-        } else if (opt_name == "skey_size") {
-            g_settings.skey_size = std::stoi(opt_arg);
+        } else if (opt_name == "lo_skey_size") {
+            g_settings.lo_skey_size = std::stoi(opt_arg);
+        } else if (opt_name == "hi_skey_size") {
+            g_settings.hi_skey_size = std::stoi(opt_arg);
         } else if (opt_name == "skey_count") {
             g_settings.skey_count = std::stoi(opt_arg);
-        } else if (opt_name == "lkey_size") {
-            g_settings.lkey_size = std::stoi(opt_arg);
+        } else if (opt_name == "lo_lkey_size") {
+            g_settings.lo_lkey_size = std::stoi(opt_arg);
+        } else if (opt_name == "hi_lkey_size") {
+            g_settings.hi_lkey_size = std::stoi(opt_arg);
         } else if (opt_name == "lkey_count") {
             g_settings.lkey_count = std::stoi(opt_arg);
         } else if (opt_name == "use_msem") {
@@ -135,9 +145,13 @@ void ParseArguments(int argc, char *argv[]) {
         (g_settings.ovld_cntl_algo == "") ||
         (g_settings.port == 0) ||
         (g_settings.db_path == "") ||
-        (g_settings.skey_size == 0) ||
+        (g_settings.lo_skey_size == 0) ||
+        (g_settings.hi_skey_size == 0) ||
+		(g_settings.lo_skey_size > g_settings.hi_skey_size) ||
         (g_settings.skey_count == 0) ||
-        (g_settings.lkey_size == 0) ||
+        (g_settings.lo_lkey_size == 0) ||
+        (g_settings.hi_lkey_size == 0) ||
+		(g_settings.lo_lkey_size > g_settings.hi_lkey_size) ||
         (g_settings.lkey_count == 0)) {
         Help();
         exit(1);
@@ -422,7 +436,7 @@ void RocksDBServerMain(void *arg) {
     // Allocate the per-core structures
     g_value_buf.resize(num_cores);
     for (int i = 0; i < num_cores; ++i) {
-        g_value_buf[i].resize(g_settings.lkey_size + 1);
+        g_value_buf[i].resize(g_settings.hi_lkey_size + 1);
     }
 
     // Start the stats server

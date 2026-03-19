@@ -51,10 +51,12 @@ NET_RTT = 10
 SLO = 310
 
 # Rocksdb settings
+RDB_LO_SKEY_SIZE = 5
+RDB_HI_SKEY_SIZE = 5000
 RDB_SKEY_COUNT = 100000
-RDB_SKEY_SIZE = 5
+RDB_LO_LKEY_SIZE = 800000
+RDB_HI_LKEY_SIZE = 1200000
 RDB_LKEY_COUNT = 5000
-RDB_LKEY_SIZE = 1000000
 RDB_SKEY_PCNT = 80
 
 # Provides the opportunity to replace the files in all the machines
@@ -281,10 +283,10 @@ print("Creating the RocksDB database...")
 cmd = "sudo rm -rf /tmp/ramfs/my_db"
 execute_remote([server_conn], cmd, True)
 cmd = "cd ~/{} && sudo numactl --membind={} ./breakwater/apps/rocksdb/build/rocksdb_createdb"\
-      " --db_path /tmp/ramfs/my_db --skey_size {} --skey_count {}"\
-      " --lkey_size {} --lkey_count {} --nb_threads {}"\
-      .format(ARTIFACT_PATH, SERVERS[0]["numa"], RDB_SKEY_SIZE, RDB_SKEY_COUNT,
-              RDB_LKEY_SIZE, RDB_LKEY_COUNT, 10)
+      " --db_path /tmp/ramfs/my_db --lo_skey_size {} --hi_skey_size {} --skey_count {}"\
+      " --lo_lkey_size {} --hi_lkey_size {} --lkey_count {} --nb_threads {}"\
+      .format(ARTIFACT_PATH, SERVERS[0]["numa"], RDB_LO_SKEY_SIZE, RDB_HI_SKEY_SIZE, RDB_SKEY_COUNT,
+              RDB_LO_LKEY_SIZE, RDB_HI_LKEY_SIZE, RDB_LKEY_COUNT, 10)
 execute_remote([server_conn], cmd, True)
 
 for offered_load in OFFERED_LOADS:
@@ -295,10 +297,10 @@ for offered_load in OFFERED_LOADS:
     print("\tStarting RocksDB server...")
     cmd = " cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_server --config_path server.config"\
           " --ovld_cntl_algo {} --port 8001 --db_path /tmp/ramfs/my_db"\
-          " --skey_size {} --skey_count {} --lkey_size {} --lkey_count {}"\
+          " --lo_skey_size {} --hi_skey_size {} --skey_count {} --lo_lkey_size {} --hi_lkey_size {} --lkey_count {}"\
           " {} >stdout.out 2>&1"\
-          .format(ARTIFACT_PATH, OVERLOAD_ALG, RDB_SKEY_SIZE, RDB_SKEY_COUNT,
-                  RDB_LKEY_SIZE, RDB_LKEY_COUNT, "--use_msem" if MSEM_ENABLE else "")
+          .format(ARTIFACT_PATH, OVERLOAD_ALG, RDB_LO_SKEY_SIZE, RDB_HI_SKEY_SIZE, RDB_SKEY_COUNT,
+                  RDB_LO_LKEY_SIZE, RDB_HI_LKEY_SIZE, RDB_LKEY_COUNT, "--use_msem" if MSEM_ENABLE else "")
     server_session = execute_remote([server_conn], cmd, False)[0]
 
     # This sleep should be enough to complete the prepopulation at the server
@@ -308,9 +310,10 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting Rocksdb client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/rocksdb/build/rocksdb_client client.config {} client"\
-          " {} {} 8001 {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
+          " {} {} 8001 {} {} {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
           .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"],
-                  RDB_SKEY_SIZE, RDB_SKEY_COUNT, RDB_LKEY_SIZE, RDB_LKEY_COUNT,
+                  RDB_LO_SKEY_SIZE, RDB_HI_SKEY_SIZE, RDB_SKEY_COUNT,
+                  RDB_LO_LKEY_SIZE, RDB_HI_LKEY_SIZE, RDB_LKEY_COUNT,
                   RDB_SKEY_PCNT, SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
@@ -413,9 +416,11 @@ run_config += "number of connections: {}\n".format(NUM_CONNS)
 run_config += "offered load (in RPS): {}\n".format(OFFERED_LOADS)
 run_config += "RTT: {} us\n".format(NET_RTT)
 run_config += "SLO: {} us\n".format(SLO)
-run_config += "Short key size : {} bytes\n".format(RDB_SKEY_SIZE)
+run_config += "Short key minimum size : {} bytes\n".format(RDB_LO_SKEY_SIZE)
+run_config += "Short key maximum size : {} bytes\n".format(RDB_HI_SKEY_SIZE)
 run_config += "Short key count : {} bytes\n".format(RDB_SKEY_COUNT)
-run_config += "Large key size : {} bytes\n".format(RDB_LKEY_SIZE)
+run_config += "Large key minimum size : {} bytes\n".format(RDB_LO_LKEY_SIZE)
+run_config += "Large key maximum size : {} bytes\n".format(RDB_HI_LKEY_SIZE)
 run_config += "Large key count : {} bytes\n".format(RDB_LKEY_COUNT)
 run_config += "Short key percentage : {} %\n".format(RDB_SKEY_PCNT)
 cmd = "echo \"{}\" > {}/run.config".format(run_config, output_dir)
