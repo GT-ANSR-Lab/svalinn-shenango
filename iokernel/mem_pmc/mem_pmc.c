@@ -56,22 +56,30 @@ void MemPmc_Init() {
 }
 
 uint64_t MemPmc_GetMaxMemChan() {
-    assert(ops);
+    if (!ops) {
+        return 0;
+    }
     return ops->GetMaxMemChan();
 }
 
 uint64_t MemPmc_GetActiveMemChan() {
-    assert(ops);
+    if (!ops) {
+        return 0;
+    }
     return ops->GetActiveMemChan();
 }
 
 uint64_t MemPmc_GetMemChanAccesses(int chan) {
-    assert(ops);
+    if (!ops) {
+        return 0;
+    }
     return ops->GetMemChanAccesses(chan);
 }
 
 uint64_t MemPmc_GetMemAccesses() {
-    assert(ops);
+    if (!ops) {
+        return 0;
+    }
     return ops->GetMemAccesses();
 }
 

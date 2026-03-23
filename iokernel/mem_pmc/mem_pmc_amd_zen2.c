@@ -123,6 +123,8 @@ void MemPmc_AmdZen2_Init() {
     long pmu_type = ReadSysfsInt(path);
     if (pmu_type < 0) {
         fprintf(stderr, "Could not read PMU type.\n");
+        free(state);
+        state = NULL;
         return;
     }
     state->m_pmu_type = pmu_type;
@@ -133,6 +135,8 @@ void MemPmc_AmdZen2_Init() {
     int pmu_cpu = ReadFirstCpuFromCpumask(path);
     if (pmu_cpu < 0) {
         fprintf(stderr, "Could not read PMU cpumask.\n");
+        free(state);
+        state = NULL;
         return;
     }
     state->m_pmu_cpu = pmu_cpu;
@@ -170,20 +174,26 @@ void MemPmc_AmdZen2_Init() {
 
 
 uint64_t MemPmc_AmdZen2_GetMaxMemChan() {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
     return state->m_max_num_mem_ch;
 }
 
 
 uint64_t MemPmc_AmdZen2_GetActiveMemChan() {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
     return state->m_num_mem_ch;
 }
 
 
 uint64_t MemPmc_AmdZen2_GetMemChanAccesses(int chan) {
 
-    assert(state);
+    if (!state) {
+        return 0;
+    }
 
     uint64_t accesses = 0;
 
@@ -209,7 +219,9 @@ uint64_t MemPmc_AmdZen2_GetMemChanAccesses(int chan) {
 
 uint64_t MemPmc_AmdZen2_GetMemAccesses() {
 
-    assert(state);
+    if (!state) {
+        return 0;
+    }
 
     uint64_t total = 0;
     uint64_t accesses = 0;
@@ -234,7 +246,9 @@ uint64_t MemPmc_AmdZen2_GetMemAccesses() {
 
 void MemPmc_AmdZen2_DeInit() {
 
-    assert(state);
+    if (!state) {
+        return;
+    }
 
     /* Close the perf descriptors */
     for (uint32_t i = 0; i < state->m_max_num_mem_ch; ++i) {

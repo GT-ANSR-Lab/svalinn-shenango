@@ -30,22 +30,30 @@ void MemPmc_Intel_Init() {
 }
 
 uint64_t MemPmc_Intel_GetMaxMemChan() {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
     return state->m_max_num_mem_ch;
 }
 
 uint64_t MemPmc_Intel_GetActiveMemChan() {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
     return state->m_num_mem_ch;
 }
 
 uint64_t MemPmc_Intel_GetMemChanAccesses(int chan) {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
     return pcm_iok_get_cas_count(chan) * CACHE_LINE_SIZE;
 }
 
 uint64_t MemPmc_Intel_GetMemAccesses() {
-    assert(state);
+    if (!state) {
+        return 0;
+    }
 
     uint64_t total = 0;
 
@@ -57,6 +65,10 @@ uint64_t MemPmc_Intel_GetMemAccesses() {
 }
 
 void MemPmc_Intel_DeInit() {
+
+    if (!state) {
+        return;
+    }
 
     pcm_iok_deinit();
 
