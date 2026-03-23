@@ -34,126 +34,110 @@ static uint64_t CHAN_CTRL_PERF_EVENT_CONFIGS[MAX_NUM_MEM_CH] = {
 static MemPmcAmdZen2State *state = NULL;
 
 
-static long ReadSysfsInt(const char *path) {
+// Helper: open a perf event by PMU type + config
+static int OpenPerfEvent(uint32_t type, int cpu, uint64_t config) {
+    struct perf_event_attr attr = {};
+    attr.size        = sizeof(attr);
+    attr.type        = type;
+    attr.config      = config;
+    attr.disabled    = 1;
+    attr.inherit     = 1;
 
-    // Open the sysctl file
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        fprintf(stderr, "Cannot open %s: %s\n", path, strerror(errno));
-        return -1;
-    }
-
-    // Read the integer value as a string
-    char buf[128];
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-
-    // Convert the string to integer
-    if (n <= 0) {
-        return -1;
-    }
-    buf[n] = '\0';
-    return strtol(buf, NULL, 0);
+    return syscall(__NR_perf_event_open, &attr,
+                   -1,   // pid: -1 = system-wide
+                    cpu,
+                   -1,   // group_fd
+                    0);  // flags
 }
 
-static int ReadFirstCpuFromCpumask(const char *path) {
+// Discover the PMU type for "amd_df" subsystem
+static int GetAmdDfPmuType(uint32_t *type) {
+	char path[4097];
+    snprintf(path, sizeof(path), "%s/type", PMU_DEV_PATH);
 
-    // Open the sysctl file
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        fprintf(stderr, "Cannot open %s: %s\n", path, strerror(errno));
+    FILE* f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "Failed to open %s: %s\n",
+                path, strerror(errno));
         return -1;
     }
 
-    // Read the string CPU list. It can be in the following formats.
-    //   "0"
-    //   "0-7"
-    //   "0,8"
-    //   "0-3,8-11"
-    char buf[256];
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-
-    if (n <= 0) {
-        fprintf(stderr, "Cannot read %s: %s\n", path, strerror(errno));
-        return -1;
-    }
-    buf[n] = '\0';
-
-    // We only need one valid CPU from the mask, so parse the first number.
-    char *p = buf;
-    while (*p == ' ' || *p == '\t' || *p == '\n')
-        p++;
-
-    if (*p == '\0')
-        return -1;
-
-    char *end = NULL;
-    long cpu = strtol(p, &end, 10);
-    if (end == p || cpu < 0) {
-        fprintf(stderr, "Invalid cpumask format in %s: %s\n", path, buf);
-        return -1;
-    }
-
-    return (int)cpu;
+    *type = 0;
+    fscanf(f, "%u", type);
+    fclose(f);
+    return 0;
 }
 
-static int PerfEventOpen(
-    struct perf_event_attr *attr,
-    pid_t pid,
-    int cpu,
-    int group_fd,
-    unsigned long flags) {
 
-    return (int)syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
+static int GetAmdDfPmuCpu(uint32_t socket, int *cpu) {
+    char path[4097];
+    snprintf(path, sizeof(path), "%s/cpumask", PMU_DEV_PATH);
+
+    FILE* f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "Failed to open %s: %s\n",
+                path, strerror(errno));
+        return -1;
+    }
+
+    uint32_t current_socket = 0;
+    int val;
+    *cpu = -1;
+
+    while (fscanf(f, "%d", &val) == 1) {
+        if (current_socket == socket) {
+            *cpu = val;
+            break;
+        }
+        current_socket++;
+        char sep;
+        if (fscanf(f, "%c", &sep) != 1 || sep != ',')
+            break;
+    }
+
+    fclose(f);
+
+    if (*cpu < 0) {
+        fprintf(stderr, "Socket %u not found in cpumask\n", socket);
+		return -1;
+	}
+
+    return 0;
 }
-
 
 void MemPmc_AmdZen2_Init() {
 
     char path[4097];
 
+    // Get the calling cpu's numa node
+    uint32_t cpu = sched_getcpu();
+    uint32_t node = numa_node_of_cpu(cpu);
+
     /* Allocate the state */
     state = (MemPmcAmdZen2State *)malloc(sizeof(MemPmcAmdZen2State));
     assert(state);
 
-    // Get the PMU type value
-    strcpy(path, PMU_DEV_PATH);
-    strcat(path, "/type");
-    long pmu_type = ReadSysfsInt(path);
-    if (pmu_type < 0) {
-        fprintf(stderr, "Could not read PMU type.\n");
-        free(state);
-        state = NULL;
-        return;
-    }
-    state->m_pmu_type = pmu_type;
+	/* Get PMU type */
+	if (GetAmdDfPmuType(&state->m_pmu_type)) {
+		free(state);
+		state = NULL;
+		return;
+	}
 
-    // Get one representative CPU from the PMU cpumask
-    strcpy(path, PMU_DEV_PATH);
-    strcat(path, "/cpumask");
-    int pmu_cpu = ReadFirstCpuFromCpumask(path);
-    if (pmu_cpu < 0) {
-        fprintf(stderr, "Could not read PMU cpumask.\n");
-        free(state);
-        state = NULL;
-        return;
-    }
-    state->m_pmu_cpu = pmu_cpu;
+	/* Get the cpu for the current numa node */
+	if (GetAmdDfPmuCpu(node, &state->m_pmu_cpu)) {
+		free(state);
+		state = NULL;
+		return;
+	}
 
     // Open a perf handle for every memory channel
     state->m_max_num_mem_ch = MAX_NUM_MEM_CH;
     state->m_num_mem_ch = 0;
     for (uint32_t i = 0; i < state->m_max_num_mem_ch; ++i) {
-        // Configure the perf event we want to count
-        struct perf_event_attr pe = {};
-        pe.size = sizeof(pe);
-        pe.type = (uint32_t)pmu_type;
-        pe.config = CHAN_CTRL_PERF_EVENT_CONFIGS[i];
-        pe.disabled = 1;
-
         // Open the perf handle
-        state->m_chan_fd[i] = PerfEventOpen(&pe, -1, pmu_cpu, -1, 0);
+        state->m_chan_fd[i] = OpenPerfEvent(state->m_pmu_type, state->m_pmu_cpu,
+											CHAN_CTRL_PERF_EVENT_CONFIGS[i]);
         if (state->m_chan_fd[i] < 0) {
             fprintf(stderr, "Skipping channel %d (perf_event_open: %s)\n",
                     i, strerror(errno));
