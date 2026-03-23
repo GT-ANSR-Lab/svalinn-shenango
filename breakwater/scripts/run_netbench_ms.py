@@ -359,7 +359,7 @@ header = "num_threads,offered_load,throughput,cpu_bound_req_throughput,"\
          "client:credit_expired_cps,client:req_dropped_rps,"
 for i in range(NUM_SERVERS):
     header += "server{0}:cpu_bound_req_throughput,"\
-               "server{0}:mem_bound_req_throughput,server{0}:cpu,server{0}:membw,server{0}:rx_pps,server{0}:tx_pps,"\
+               "server{0}:mem_bound_req_throughput,server{0}:cpu,server{0}:membw,server{0}:power,server{0}:rx_pps,server{0}:tx_pps,"\
                "server{0}:rx_bps,server{0}:tx_bps,server{0}:rx_drops_pps,server{0}:rx_ooo_pps,"\
                "server{0}:cupdate_rx_pps,server{0}:ecredit_tx_pps,server{0}:credit_tx_cps,"\
                "server{0}:req_rx_pps,server{0}:req_drop_rate,server{0}:resp_tx_pps,server{0}:reject_mean,"\

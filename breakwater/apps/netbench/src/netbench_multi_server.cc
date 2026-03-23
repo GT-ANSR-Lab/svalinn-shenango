@@ -148,6 +148,7 @@ struct sstat_raw {
   uint64_t total;
   uint64_t busy;
   uint64_t mem_accesses;
+  double energy_consumed;
   unsigned int num_cores;
   unsigned int max_cores;
   uint64_t cupdate_rx;
@@ -172,6 +173,7 @@ struct shstat_raw {
 struct sstat {
   double cpu_usage;
   double membw_usage;
+  double power_usage;
   double rx_pps;
   double tx_pps;
   double rx_bps;
@@ -461,7 +463,8 @@ void RPCSStatWorker(std::unique_ptr<rt::TcpConn> c) {
 
     sstat_raw u = {total,
                    busy,
-		   rt::RuntimeGlobMemAccesses(),
+                   rt::RuntimeGlobMemAccesses(),
+                   rt::RuntimeGlobEnergyConsumed(),
                    rt::RuntimeMaxCores(),
                    static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_ONLN)),
                    rpc::RpcServerStatCupdateRx(),
@@ -505,7 +508,7 @@ sstat_raw ReadRPCSStat(int server_idx) {
   ret = c->ReadFull(&u, sizeof(u));
   if (ret != static_cast<ssize_t>(sizeof(u)))
     panic("sstat response failed, ret = %ld", ret);
-  return sstat_raw{u.total, u.busy, u.mem_accesses, u.num_cores, u.max_cores, u.cupdate_rx,
+  return sstat_raw{u.total, u.busy, u.mem_accesses, u.energy_consumed, u.num_cores, u.max_cores, u.cupdate_rx,
       u.ecredit_tx, u.credit_tx, u.req_rx, u.req_dropped, u.resp_tx};
 }
 
@@ -1262,8 +1265,11 @@ std::vector<work_unit> RunExperiment(
           uint64_t busy = s2[i].busy - s1[i].busy;
           ss[i].cpu_usage = static_cast<double>(busy) / static_cast<double>(total);
 
-	  uint64_t mem_accesses = s2[i].mem_accesses - s1[i].mem_accesses;
-	  ss[i].membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+		  uint64_t mem_accesses = s2[i].mem_accesses - s1[i].mem_accesses;
+		  ss[i].membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+
+		  double energy_consumed = s2[i].energy_consumed - s1[i].energy_consumed;
+		  ss[i].power_usage = energy_consumed / elapsed_ * 1000000;
 
           uint64_t cupdate_rx_pkts = s2[i].cupdate_rx - s1[i].cupdate_rx;
           uint64_t ecredit_tx_pkts = s2[i].ecredit_tx - s1[i].ecredit_tx;
@@ -1346,6 +1352,7 @@ void PrintHeader(std::ostream &os) {
          << "server" << i << ":mem_bound_req_throughput,"
          << "server" << i << ":cpu,"
          << "server" << i << ":membw,"
+         << "server" << i << ":power,"
          << "server" << i << ":rx_pps,"
          << "server" << i << ":tx_pps,"
          << "server" << i << ":rx_bps,"
@@ -1573,6 +1580,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
                 << cs->per_server_mem_bound_req_rps[i] << ","
                 << ss[i].cpu_usage << ","
                 << ss[i].membw_usage << ","
+                << ss[i].power_usage << ","
                 << ss[i].rx_pps << ","
                 << ss[i].tx_pps << ","
                 << ss[i].rx_bps << ","
@@ -1617,6 +1625,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
                 << cs->per_server_mem_bound_req_rps[i] << ","
                 << ss[i].cpu_usage << ","
                 << ss[i].membw_usage << ","
+                << ss[i].power_usage << ","
                 << ss[i].rx_pps << ","
                 << ss[i].tx_pps << ","
                 << ss[i].rx_bps << ","
