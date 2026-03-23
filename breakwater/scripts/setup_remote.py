@@ -88,6 +88,15 @@ execute_remote(conns, cmd, True)
 cmd = "pip3 install pandas openpyxl xlrd --break-system-packages"
 execute_remote(conns, cmd, True)
 
+cmd = "sudo modprobe cpuid"
+execute_remote(conns, cmd, True)
+cmd = "sudo modprobe msr"
+execute_remote(conns, cmd, True)
+cmd = "sudo sysctl -w kernel.nmi_watchdog=0"
+execute_remote(conns, cmd, True)
+cmd = "sudo sysctl -w kernel.perf_event_paranoid=-1"
+execute_remote(conns, cmd, True)
+
 # build caladan
 print("Building Caladan...")
 cmd = "cd ~/{} && make clean && make submodules -j16 && make -j16".format(ARTIFACT_PATH)
