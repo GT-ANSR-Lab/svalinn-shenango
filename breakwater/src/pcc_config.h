@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 /* Queueing delay budget of a request */
 #define SPCC_QDELAY_BUDGET            300
 
@@ -49,11 +51,13 @@
 
 /* The utility function */
 static inline double spcc_util_fn(
-    int in_cnt,
-    int out_cnt,
-    int drop_cnt,
-    int qdelay,
-    int duration) {
+    uint64_t in_cnt,
+    uint64_t out_cnt,
+    uint64_t drop_cnt,
+    uint64_t qdelay,
+    uint64_t mem_accesses,
+    double energy_consumed,
+    uint64_t duration) {
 
     return (double)(out_cnt) / (double)duration;
 }

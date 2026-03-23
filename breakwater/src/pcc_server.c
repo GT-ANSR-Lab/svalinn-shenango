@@ -183,6 +183,8 @@ static enum spcc_ctl_state      srpc_pcc_state;
  *   4) Start timestamp of the monitor interval
  *   5) End timestamp of the monitor interval
  *   6) Max queueing delay observed during the monitor interval
+ *   7) Memory accesses
+ *   8) Energy consumed
  */
 static atomic64_t               srpc_pcc_in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
@@ -190,6 +192,8 @@ static atomic64_t               srpc_pcc_drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
+static uint64_t                 srpc_pcc_mem_accesses[SPCC_MAX_NUM_MICRO_EXPS+1];
+static double                   srpc_pcc_energy_consumed[SPCC_MAX_NUM_MICRO_EXPS+1];
 
 /* Currently running microexperiment ID. Used to index in the stats arrays
  * described above. */
@@ -689,12 +693,14 @@ static void srpc_update_credit_pool()
     int credit_used;
     int credit_unused;
     int micro_exp_id;
-    int in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    int out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    int drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    int start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    int end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    int qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
+    uint64_t mem_accesses[SPCC_MAX_NUM_MICRO_EXPS+1];
+    double energy_consumed[SPCC_MAX_NUM_MICRO_EXPS+1];
     double utils[SPCC_MAX_NUM_MICRO_EXPS+1];
     bool do_wakeup;
 #if SPCC_MICRO_EXP_STRICT_LABELLING == 1
@@ -750,6 +756,8 @@ static void srpc_update_credit_pool()
         atomic64_write(&srpc_pcc_out_cnts[micro_exp_id], 0);
         atomic64_write(&srpc_pcc_drop_cnts[micro_exp_id], 0);
         atomic64_write(&srpc_pcc_qdelays[micro_exp_id], runtime_queue_us());
+        srpc_pcc_mem_accesses[micro_exp_id] = runtime_glob_mem_accesses();
+        srpc_pcc_energy_consumed[micro_exp_id] = runtime_glob_energy_consumed();
 
         /* Set the start time for the monitor interval */
         atomic64_write(&srpc_pcc_start_ts[micro_exp_id], microtime());
@@ -771,6 +779,14 @@ static void srpc_update_credit_pool()
         SPCC_DEBUG_LOG("[%ld] Finished microexperiment %d (dir=%d)\n",
                        now, srpc_pcc_micro_exp_id,
                        srpc_pcc_micro_exp_dirs[srpc_pcc_micro_exp_id]);
+
+        micro_exp_id = srpc_pcc_micro_exp_id;
+
+        /* Update any remaining stats */
+        srpc_pcc_mem_accesses[micro_exp_id] = runtime_glob_mem_accesses() - \
+            srpc_pcc_mem_accesses[micro_exp_id];
+        srpc_pcc_energy_consumed[micro_exp_id] = runtime_glob_energy_consumed() - \
+            srpc_pcc_energy_consumed[micro_exp_id];
 
         // Stop the microexperiment
         srpc_pcc_micro_exp_id = 0;
@@ -808,10 +824,13 @@ static void srpc_update_credit_pool()
             start_ts[i] = atomic64_read(&srpc_pcc_start_ts[i]);
             end_ts[i] = atomic64_read(&srpc_pcc_end_ts[i]);
             qdelays[i] = atomic64_read(&srpc_pcc_qdelays[i]);
+            mem_accesses[i] = srpc_pcc_mem_accesses[i];
+            energy_consumed[i] = srpc_pcc_energy_consumed[i];
 
             /* Compute the operator-defined utility */
             utils[i] = spcc_util_fn(in_cnts[i], out_cnts[i], drop_cnts[i],
-                                    qdelays[i], end_ts[i] - start_ts[i]);
+                                    qdelays[i], mem_accesses[i], energy_consumed[i],
+                                    end_ts[i] - start_ts[i]);
 
             SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_cnts=%ld, out_cnts=%ld,"
                            " drop_cnts=%ld, qdelay=%ld, duration=%ld -> utility=%lf\n",
