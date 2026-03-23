@@ -266,7 +266,8 @@ void RocksDBStatWorker(std::unique_ptr<rt::TcpConn> c) {
         // Prepare the response stats message
         RocksDBStatResp resp = {total,
                                 busy,
-				rt::RuntimeGlobMemAccesses(),
+								rt::RuntimeGlobMemAccesses(),
+								rt::RuntimeGlobEnergyConsumed(),
                                 rt::RuntimeMaxCores(),
                                 static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_ONLN)),
                                 rpc::RpcServerStatCupdateRx(),

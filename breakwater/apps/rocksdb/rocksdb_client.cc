@@ -95,6 +95,7 @@ struct shstat_raw {
 struct sstat {
     double cpu_usage;
     double membw_usage;
+    double power_usage;
     double rx_pps;
     double tx_pps;
     double rx_bps;
@@ -333,7 +334,7 @@ sstat_raw ReadRPCSStat() {
     ret = c->ReadFull(&resp, sizeof(resp));
     if (ret != static_cast<ssize_t>(sizeof(resp)))
         panic("sstat response failed, ret = %ld", ret);
-    return sstat_raw{resp.total, resp.busy, resp.mem_accesses, resp.num_cores,
+    return sstat_raw{resp.total, resp.busy, resp.mem_accesses, resp.energy_consumed, resp.num_cores,
             resp.max_cores, resp.winu_rx, resp.winu_tx, resp.win_tx,
             resp.req_rx, resp.req_dropped, resp.resp_tx};
 }
@@ -677,10 +678,13 @@ std::vector<work_unit> RunExperiment(
         uint64_t busy = s2.busy - s1.busy;
         ss->cpu_usage = static_cast<double>(busy) / static_cast<double>(total);
 
-	uint64_t mem_accesses = s2.mem_accesses - s1.mem_accesses;
-	ss->membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+		uint64_t mem_accesses = s2.mem_accesses - s1.mem_accesses;
+		ss->membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
 
-        uint64_t winu_rx_pkts = s2.winu_rx - s1.winu_rx;
+		double energy_consumed = s2.energy_consumed - s1.energy_consumed;
+		ss->power_usage = energy_consumed / elapsed_ * 1000000;
+
+		uint64_t winu_rx_pkts = s2.winu_rx - s1.winu_rx;
         uint64_t winu_tx_pkts = s2.winu_tx - s1.winu_tx;
         uint64_t win_tx_wins = s2.win_tx - s1.win_tx;
         uint64_t req_rx_pkts = s2.req_rx - s1.req_rx;
@@ -715,7 +719,7 @@ std::vector<work_unit> RunExperiment(
 
 void PrintHeader(std::ostream& os) {
     os << "num_threads," << "offered_load," << "throughput," << "skey_throughput,"
-       << "lkey_throughput," << "goodput," << "cpu," << "membw," << "min,"
+       << "lkey_throughput," << "goodput," << "cpu," << "membw," << "power," << "min,"
        << "mean," << "p50," << "skey_p50," << "lkey_p50,"
        << "p90," << "skey_p90," << "lkey_p90,"
        << "p99," << "skey_p99," << "lkey_p99," << "p999," << "p9999," << "max,"
@@ -841,7 +845,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
     std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
               << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
               << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
-              << min << "," << mean << "," << p50 << "," << skey_p50 << ","
+              << ss->power_usage << "," << min << "," << mean << "," << p50 << "," << skey_p50 << ","
               << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
               << p99 << "," << skey_p99 << "," << lkey_p99 << ","
               << p999 << "," << p9999 << "," << max << "," << lmin << "," << lmean << ","
@@ -860,7 +864,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
     csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
             << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
             << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
-            << min << "," << mean << "," << p50 << "," << skey_p50 << ","
+             << ss->power_usage << "," << min << "," << mean << "," << p50 << "," << skey_p50 << ","
             << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
             << p99 << "," << skey_p99 << "," << lkey_p99 << ","
             << p999 << "," << p9999 << "," << max << "," << lmin << "," << lmean << ","
@@ -885,6 +889,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
                  << "\"goodput\":" << cs->goodput << ","
                  << "\"cpu\":" << ss->cpu_usage << ","
                  << "\"membw\":" << ss->membw_usage << ","
+                 << "\"power\":" << ss->power_usage << ","
                  << "\"min\":" << min << ","
                  << "\"mean\":" << mean << ","
                  << "\"p50\":" << p50 << ","

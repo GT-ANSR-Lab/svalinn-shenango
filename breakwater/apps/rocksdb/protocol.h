@@ -15,6 +15,7 @@ struct RocksDBStatResp {
     uint64_t total;
     uint64_t busy;
     uint64_t mem_accesses;
+    double energy_consumed;
     unsigned int num_cores;
     unsigned int max_cores;
     uint64_t winu_rx;
