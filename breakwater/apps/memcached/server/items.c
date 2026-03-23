@@ -217,11 +217,13 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
         }
     }
 
+#if 0
     if (i > 0) {
         mutex_lock(&lru_locks[id]);
         itemstats[id].direct_reclaims += i;
         mutex_unlock(&lru_locks[id]);
     }
+#endif
 
     return it;
 }
@@ -298,9 +300,11 @@ item *do_item_alloc(char *key, const size_t nkey, const unsigned int flags,
     }
 
     if (it == NULL) {
+#if 0
         mutex_lock(&lru_locks[id]);
         itemstats[id].outofmemory++;
         mutex_unlock(&lru_locks[id]);
+#endif
         return NULL;
     }
 
