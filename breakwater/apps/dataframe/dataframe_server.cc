@@ -265,6 +265,7 @@ void DataFrameStatWorker(std::unique_ptr<rt::TcpConn> c) {
         DataFrameStatResp resp = {total,
                                   busy,
                                   rt::RuntimeGlobMemAccesses(),
+                                  rt::RuntimeGlobEnergyConsumed(),
                                   rt::RuntimeMaxCores(),
                                   static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_ONLN)),
                                   rpc::RpcServerStatCupdateRx(),
