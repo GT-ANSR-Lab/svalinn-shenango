@@ -18,7 +18,7 @@
 #include "sched.h"
 #include "ksched.h"
 #include "hw_timestamp.h"
-#include "mem_pmc/mem_pmc.h"
+#include "pmc_mod/mem_pmc.h"
 
 /* a bitmap of cores available to be allocated by the scheduler */
 DEFINE_BITMAP(sched_allowed_cores, NCPU);
