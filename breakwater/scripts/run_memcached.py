@@ -17,7 +17,7 @@ import pandas as pd
 # Core allocator settings
 RUNTIME_SCHED = "simple"
 RUNTIME_SCHED_THRESHOLD = 5
-RUNTIME_SPIN_SERVER = False
+RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_MEM_INFO_POLL_INTERVAL = 0
@@ -26,7 +26,7 @@ RUNTIME_MEM_INFO_POLL_INTERVAL = 0
 OVERLOAD_ALG = "pcc"
 
 # Memory semaphore settings
-MSEM_ENABLE = False
+MSEM_ENABLE = True
 MSEM_CTL_DELAY_US = 500
 MSEM_ALPHA = 0.6
 MSEM_TARGET_NORM_MEMBW = 1.0
@@ -41,8 +41,8 @@ NUM_CLIENTS = len(CLIENTS)
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 10
-MAX_OFFERED_LOAD = 1000000
+NUM_SAMPLES = 30
+MAX_OFFERED_LOAD = 800000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 
 # Network RTT on the testbed
@@ -58,7 +58,7 @@ MC_SKEY_COUNT = 100000
 MC_LO_LKEY_SIZE = 800000
 MC_HI_LKEY_SIZE = 1200000
 MC_LKEY_COUNT = 5000
-MC_SKEY_PCNT = 100
+MC_SKEY_PCNT = 72
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
