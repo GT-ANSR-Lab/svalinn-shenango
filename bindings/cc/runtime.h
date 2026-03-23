@@ -26,6 +26,9 @@ inline float RuntimeLoad() { return runtime_load(); }
 // Gets the global memory accesses performed by all processes till this point in time.
 inline uint64_t RuntimeGlobMemAccesses() { return runtime_glob_mem_accesses(); }
 
+// Gets the global energy consumed by all processes till this point in time.
+inline double RuntimeGlobEnergyConsumed() { return runtime_glob_energy_consumed(); }
+
 // Gets the current number of active cores
 inline unsigned int RuntimeActiveCores() { return runtime_active_cores(); }
 

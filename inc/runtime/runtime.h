@@ -53,6 +53,15 @@ static inline uint64_t runtime_glob_mem_accesses(void)
 }
 
 /**
+ * runtime_glob_energy_consumed - returns the energy consumed
+ * across the entire machine till this point in time.
+ */
+static inline double runtime_glob_energy_consumed(void)
+{
+	return ACCESS_ONCE(runtime_info->energy.glob_energy_consumed);
+}
+
+/**
  * runtime_active_cores - returns the number of currently active cores
  *
  */

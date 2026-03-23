@@ -65,9 +65,14 @@ struct memory_info {
 	uint64_t                glob_mem_accesses;
 };
 
+struct energy_info {
+	double                  glob_energy_consumed;
+};
+
 struct runtime_info {
 	struct congestion_info congestion;
 	struct memory_info memory;
+	struct energy_info energy;
 	uint64_t directpath_strides_posted;
 	atomic64_t directpath_strides_consumed;
 };

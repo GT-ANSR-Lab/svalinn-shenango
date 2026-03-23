@@ -19,6 +19,7 @@
 #include "ksched.h"
 #include "hw_timestamp.h"
 #include "pmc_mod/mem_pmc.h"
+#include "pmc_mod/pow_pmc.h"
 
 /* a bitmap of cores available to be allocated by the scheduler */
 DEFINE_BITMAP(sched_allowed_cores, NCPU);
@@ -694,33 +695,39 @@ rewake:
 }
 
 /**
- * sched_update_mem_info - Fetches the latest memory info from the hardware performance
+ * sched_update_pmc_info - Fetches the latest info from the hardware performance
  * counters and propagates the info to the individual runtimes.
  */
-static void sched_update_mem_info(uint64_t now_time) {
+static void sched_update_pmc_info(uint64_t now_time) {
 
 	static uint64_t last_time = 0;
-	uint64_t now_accesses = 0;
 	int i;
-	struct memory_info *info;
+	uint64_t now_accesses = 0;
+	double now_energy = 0.0;
+	struct memory_info *mem_info;
+	struct energy_info *eng_info;
 
-	/* If the memory info polling is not enabled */
-	if (IOKERNEL_MEM_INFO_POLL_INTERVAL <= 0) {
+	/* If the pmc info polling is not enabled */
+	if (IOKERNEL_PMC_INFO_POLL_INTERVAL <= 0) {
 		return;
 	}
 
 	/* Check if we need to perform update or not */
-	if (now_time - last_time < IOKERNEL_MEM_INFO_POLL_INTERVAL) {
+	if (now_time - last_time < IOKERNEL_PMC_INFO_POLL_INTERVAL) {
 		return;
 	}
 
 	/* Get the global memory accesses */
 	now_accesses = MemPmc_GetMemAccesses();
+	/* Get the global energy consumption */
+	now_energy = PowPmc_GetEnergyConsumed();
 
 	/* Update the clients with the new info */
 	for (i = 0; i < dp.nr_clients; ++i) {
-		info = &dp.clients[i]->runtime_info->memory;
-		ACCESS_ONCE(info->glob_mem_accesses) = now_accesses;
+		mem_info = &dp.clients[i]->runtime_info->memory;
+		ACCESS_ONCE(mem_info->glob_mem_accesses) = now_accesses;
+		eng_info = &dp.clients[i]->runtime_info->energy;
+		ACCESS_ONCE(eng_info->glob_energy_consumed) = now_energy;
 	}
 
 	last_time = now_time;
@@ -741,8 +748,8 @@ void sched_poll(void)
 	cur_tsc = rdtsc();
 	now = (cur_tsc - start_tsc) / cycles_per_us;
 
-	/* Update the memory info */
-	sched_update_mem_info(now);
+	/* Update the PMC info */
+	sched_update_pmc_info(now);
 
 	/*
 	 * slow pass --- runs every IOKERNEL_POLL_INTERVAL
@@ -1007,8 +1014,9 @@ int sched_init(void)
 	bitmap_for_each_set(sched_allowed_cores, NCPU, i)
 		sched_cores_tbl[sched_cores_nr++] = i;
 
-	if (IOKERNEL_MEM_INFO_POLL_INTERVAL > 0) {
+	if (IOKERNEL_PMC_INFO_POLL_INTERVAL > 0) {
 		MemPmc_Init();
+		PowPmc_Init();
 	}
 
 	return 0;

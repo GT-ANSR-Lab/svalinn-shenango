@@ -20,7 +20,7 @@ RUNTIME_SCHED_THRESHOLD = 5
 RUNTIME_SPIN_SERVER = True
 RUNTIME_ENABLE_DIRECTPATH = True
 RUNTIME_DISABLE_WATCHDOG = False
-RUNTIME_MEM_INFO_POLL_INTERVAL = 0
+RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
 OVERLOAD_ALG = "protego"
@@ -170,10 +170,10 @@ for fil in FILES_TO_REPLACE:
 
 # Set the memory info update frequency
 print("Updating the memory information update frequency in Caladan...")
-cmd = "sed -i \'s/#define IOKERNEL_MEM_INFO_POLL_INTERVAL.*/#define IOKERNEL_MEM_INFO_POLL_INTERVAL\\t\\t\\t{:d}/g\'"\
-        " ~/{}/iokernel/defs.h".format(RUNTIME_MEM_INFO_POLL_INTERVAL, ARTIFACT_PATH)
+cmd = "sed -i \'s/#define IOKERNEL_PMC_INFO_POLL_INTERVAL.*/#define IOKERNEL_PMC_INFO_POLL_INTERVAL\\t\\t\\t{:d}/g\'"\
+        " ~/{}/iokernel/defs.h".format(RUNTIME_PMC_INFO_POLL_INTERVAL, ARTIFACT_PATH)
 execute_remote([server_conn], cmd, True)
-cmd = "sed -i \'s/#define IOKERNEL_MEM_INFO_POLL_INTERVAL.*/#define IOKERNEL_MEM_INFO_POLL_INTERVAL\\t\\t\\t0/g\'"\
+cmd = "sed -i \'s/#define IOKERNEL_PMC_INFO_POLL_INTERVAL.*/#define IOKERNEL_PMC_INFO_POLL_INTERVAL\\t\\t\\t0/g\'"\
         " ~/{}/iokernel/defs.h".format(ARTIFACT_PATH)
 execute_remote([client_conn] + agent_conns, cmd, True)
 
