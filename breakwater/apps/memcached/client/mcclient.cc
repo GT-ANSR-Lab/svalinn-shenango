@@ -93,6 +93,7 @@ namespace {
         uint64_t total;
         uint64_t busy;
         uint64_t mem_accesses;
+        double energy_consumed;
         unsigned int num_cores;
         unsigned int max_cores;
         uint64_t winu_rx;
@@ -117,6 +118,7 @@ namespace {
     struct sstat {
         double cpu_usage;
         double membw_usage;
+        double power_usage;
         double rx_pps;
         double tx_pps;
         double rx_bps;
@@ -369,7 +371,7 @@ namespace {
         ret = c->ReadFull(&u, sizeof(u));
         if (ret != static_cast<ssize_t>(sizeof(u)))
             panic("sstat response failed, ret = %ld", ret);
-        return sstat_raw{u.total, u.busy, u.mem_accesses, u.num_cores, u.max_cores, u.winu_rx,
+        return sstat_raw{u.total, u.busy, u.mem_accesses, u.energy_consumed, u.num_cores, u.max_cores, u.winu_rx,
 			u.winu_tx, u.win_tx, u.req_rx, u.req_dropped, u.resp_tx};
     }
 
@@ -819,8 +821,11 @@ namespace {
             uint64_t busy = s2.busy - s1.busy;
             ss->cpu_usage = static_cast<double>(busy) / static_cast<double>(total);
 
-	    uint64_t mem_accesses = s2.mem_accesses - s1.mem_accesses;
-	    ss->membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+			uint64_t mem_accesses = s2.mem_accesses - s1.mem_accesses;
+			ss->membw_usage = static_cast<double>(mem_accesses) / elapsed_ * 1000000;
+
+			double energy_consumed = s2.energy_consumed - s1.energy_consumed;
+			ss->power_usage = energy_consumed / elapsed_ * 1000000;
 
             uint64_t winu_rx_pkts = s2.winu_rx - s1.winu_rx;
             uint64_t winu_tx_pkts = s2.winu_tx - s1.winu_tx;
@@ -857,7 +862,7 @@ namespace {
 
     void PrintHeader(std::ostream& os) {
         os << "num_threads," << "offered_load," << "throughput," << "set_throughput," << "skey_throughput,"
-           << "lkey_throughput," << "goodput," << "set_goodput," << "skey_goodput," << "lkey_goodput," << "cpu," << "membw," << "min,"
+           << "lkey_throughput," << "goodput," << "set_goodput," << "skey_goodput," << "lkey_goodput," << "cpu," << "membw," << "power," << "min,"
            << "mean," << "set_mean," << "skey_mean," << "lkey_mean," << "p50," << "set_p50," << "skey_p50," << "lkey_p50,"
            << "p90," << "set_p90," << "skey_p90," << "lkey_p90,"
            << "p99," << "set_p99," << "skey_p99," << "lkey_p99," << "p999," << "p9999," << "max,"
@@ -1023,7 +1028,7 @@ namespace {
         std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
                   << cs->offered_rps << "," << cs->rps << "," << cs->set_rps << "," << cs->skey_rps << ","
                   << cs->lkey_rps << "," << cs->goodput << "," << cs->set_goodput << "," << cs->skey_goodput << ","
-                  << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+                  << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << "," << ss->power_usage << ","
                   << min << "," << mean << "," << set_mean << "," << skey_mean << "," << lkey_mean << ","
                   << p50 << "," << set_p50 << "," << skey_p50 << ","
                   << lkey_p50 << "," << p90 << "," << set_p90 << "," << skey_p90 << "," << lkey_p90 << ","
@@ -1044,7 +1049,7 @@ namespace {
         csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
                 << cs->offered_rps << "," << cs->rps << "," << cs->set_rps << "," << cs->skey_rps << ","
                 << cs->lkey_rps << "," << cs->goodput << "," << cs->set_goodput << "," << cs->skey_goodput << ","
-                << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+                << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << "," << ss->power_usage << ","
                 << min << "," << mean << "," << set_mean << "," << skey_mean << "," << lkey_mean << ","
                 << p50 << "," << set_p50 << "," << skey_p50 << ","
                 << lkey_p50 << "," << p90 << "," << set_p90 << "," << skey_p90 << "," << lkey_p90 << ","
@@ -1076,6 +1081,7 @@ namespace {
                  << "\"lkey_goodput\":" << cs->lkey_goodput << ","
                  << "\"cpu\":" << ss->cpu_usage << ","
                  << "\"membw\":" << ss->membw_usage << ","
+                 << "\"power\":" << ss->power_usage << ","
                  << "\"min\":" << min << ","
                  << "\"mean\":" << mean << ","
                  << "\"set_mean\":" << set_mean << ","
