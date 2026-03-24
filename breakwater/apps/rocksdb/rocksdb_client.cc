@@ -117,6 +117,8 @@ struct cstat_raw {
     double skey_rps;
     double lkey_rps;
     double goodput;
+    double skey_goodput;
+    double lkey_goodput;
     double min_percli_tput;
     double max_percli_tput;
     uint64_t winu_rx;
@@ -133,6 +135,8 @@ struct cstat {
     double skey_rps;
     double lkey_rps;
     double goodput;
+    double skey_goodput;
+    double lkey_goodput;
     double min_percli_tput;
     double max_percli_tput;
     double winu_rx_pps;
@@ -244,6 +248,8 @@ public:
                 csr->skey_rps += rem_csr.skey_rps;
                 csr->lkey_rps += rem_csr.lkey_rps;
                 csr->goodput += rem_csr.goodput;
+                csr->skey_goodput += rem_csr.skey_goodput;
+                csr->lkey_goodput += rem_csr.lkey_goodput;
                 csr->min_percli_tput = MIN(rem_csr.min_percli_tput,
                                            csr->min_percli_tput);
                 csr->max_percli_tput = MAX(rem_csr.max_percli_tput,
@@ -601,6 +607,8 @@ std::vector<work_unit> RunExperiment(
     double min_throughput = 0.0;
     double max_throughput = 0.0;
     uint64_t good_resps = 0;
+    uint64_t skey_good_resps = 0;
+    uint64_t lkey_good_resps = 0;
     uint64_t resps = 0;
     uint64_t skey_resps = 0;
     uint64_t lkey_resps = 0;
@@ -611,6 +619,8 @@ std::vector<work_unit> RunExperiment(
         auto &v = *samples[i];
         double throughput;
         int slo_success;
+        int skey_slo_success;
+        int lkey_slo_success;
         int resp_success;
         int skey_resp_success;
         int lkey_resp_success;
@@ -645,11 +655,19 @@ std::vector<work_unit> RunExperiment(
         slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
                 return s.success && s.duration_us < slo;
             });
+        skey_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                return s.success && s.is_skey && s.duration_us < slo;
+            });
+        lkey_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+                return s.success && !s.is_skey && s.duration_us < slo;
+            });
 
         resps += resp_success;
         skey_resps += skey_resp_success;
         lkey_resps += lkey_resp_success;
         good_resps += slo_success;
+        skey_good_resps += skey_slo_success;
+        lkey_good_resps += lkey_slo_success;
 
         if (i == 0) {
             min_throughput = throughput;
@@ -669,6 +687,8 @@ std::vector<work_unit> RunExperiment(
         csr->skey_rps = static_cast<double>(skey_resps) / elapsed_ * 1000000;
         csr->lkey_rps = static_cast<double>(lkey_resps) / elapsed_ * 1000000;
         csr->goodput = static_cast<double>(good_resps) / elapsed_ * 1000000;
+        csr->skey_goodput = static_cast<double>(skey_good_resps) / elapsed_ * 1000000;
+        csr->lkey_goodput = static_cast<double>(lkey_good_resps) / elapsed_ * 1000000;
         csr->min_percli_tput = min_throughput;
         csr->max_percli_tput = max_throughput;
     }
@@ -719,7 +739,7 @@ std::vector<work_unit> RunExperiment(
 
 void PrintHeader(std::ostream& os) {
     os << "num_threads," << "offered_load," << "throughput," << "skey_throughput,"
-       << "lkey_throughput," << "goodput," << "cpu," << "membw," << "power," << "min,"
+       << "lkey_throughput," << "goodput," << "skey_goodput," << "lkey_goodput," << "cpu," << "membw," << "power," << "min,"
        << "mean," << "p50," << "skey_p50," << "lkey_p50,"
        << "p90," << "skey_p90," << "lkey_p90,"
        << "p99," << "skey_p99," << "lkey_p99," << "p999," << "p9999," << "max,"
@@ -844,7 +864,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
 
     std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
               << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
-              << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+              << cs->lkey_rps << "," << cs->goodput << "," << cs->skey_goodput << "," << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
               << ss->power_usage << "," << min << "," << mean << "," << p50 << "," << skey_p50 << ","
               << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
               << p99 << "," << skey_p99 << "," << lkey_p99 << ","
@@ -863,7 +883,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
 
     csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
             << cs->offered_rps << "," << cs->rps << "," << cs->skey_rps << ","
-            << cs->lkey_rps << "," << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+            << cs->lkey_rps << "," << cs->goodput << "," << cs->skey_goodput << "," << cs->lkey_goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
              << ss->power_usage << "," << min << "," << mean << "," << p50 << "," << skey_p50 << ","
             << lkey_p50 << "," << p90 << "," << skey_p90 << "," << lkey_p90 << ","
             << p99 << "," << skey_p99 << "," << lkey_p99 << ","
@@ -887,6 +907,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
              << "\"skey_throughput\":" << cs->skey_rps << ","
                  << "\"lkey_throughput\":" << cs->lkey_rps << ","
                  << "\"goodput\":" << cs->goodput << ","
+                 << "\"skey_goodput\":" << cs->skey_goodput << ","
+                 << "\"lkey_goodput\":" << cs->lkey_goodput << ","
                  << "\"cpu\":" << ss->cpu_usage << ","
                  << "\"membw\":" << ss->membw_usage << ","
                  << "\"power\":" << ss->power_usage << ","
@@ -967,6 +989,8 @@ void SteadyStateExperiment(int threads, double offered_rps) {
                csr.skey_rps,
                csr.lkey_rps,
                csr.goodput,
+               csr.skey_goodput,
+               csr.lkey_goodput,
                csr.min_percli_tput,
                csr.max_percli_tput,
                static_cast<double>(csr.winu_rx) / elapsed * 1000000,
