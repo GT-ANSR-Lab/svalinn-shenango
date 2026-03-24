@@ -114,6 +114,7 @@ struct cstat_raw {
     double rps;
     double df_ops_rps[DATAFRAME_OP_NUM_OPS];
     double goodput;
+    double df_ops_goodput[DATAFRAME_OP_NUM_OPS];
     double min_percli_tput;
     double max_percli_tput;
     uint64_t winu_rx;
@@ -129,6 +130,7 @@ struct cstat {
     double rps;
     double df_ops_rps[DATAFRAME_OP_NUM_OPS];
     double goodput;
+    double df_ops_goodput[DATAFRAME_OP_NUM_OPS];
     double min_percli_tput;
     double max_percli_tput;
     double winu_rx_pps;
@@ -228,6 +230,9 @@ public:
                     csr->df_ops_rps[op] += rem_csr.df_ops_rps[op];
                 }
                 csr->goodput += rem_csr.goodput;
+                for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
+                    csr->df_ops_goodput[op] += rem_csr.df_ops_goodput[op];
+                }
                 csr->min_percli_tput = MIN(rem_csr.min_percli_tput,
                                            csr->min_percli_tput);
                 csr->max_percli_tput = MAX(rem_csr.max_percli_tput,
@@ -584,6 +589,7 @@ std::vector<work_unit> RunExperiment(
     double min_throughput = 0.0;
     double max_throughput = 0.0;
     uint64_t good_resps = 0;
+    uint64_t df_ops_good_resps[DATAFRAME_OP_NUM_OPS] = {0};
     uint64_t resps = 0;
     uint64_t df_ops_resps[DATAFRAME_OP_NUM_OPS] = {0};
     uint64_t offered = 0;
@@ -593,6 +599,7 @@ std::vector<work_unit> RunExperiment(
         auto &v = *samples[i];
         double throughput;
         int slo_success;
+        int df_ops_slo_success[DATAFRAME_OP_NUM_OPS] = {0};
         int resp_success;
         int df_ops_resp_success[DATAFRAME_OP_NUM_OPS] = {0};
 
@@ -629,11 +636,20 @@ std::vector<work_unit> RunExperiment(
                 return s.success && s.duration_us < slo;
             });
 
+        for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
+            df_ops_slo_success[op] = std::count_if(v.begin(), v.end(), [op](const work_unit &s) {
+                return s.success && s.op == op && s.duration_us < slo;
+            });
+        }
+
         resps += resp_success;
         for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
             df_ops_resps[op] += df_ops_resp_success[op];
         }
         good_resps += slo_success;
+        for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
+            df_ops_good_resps[op] += df_ops_slo_success[op];
+        }
 
         if (i == 0) {
             min_throughput = throughput;
@@ -654,6 +670,9 @@ std::vector<work_unit> RunExperiment(
             csr->df_ops_rps[op] = static_cast<double>(df_ops_resps[op]) / elapsed_ * 1000000;
         }
         csr->goodput = static_cast<double>(good_resps) / elapsed_ * 1000000;
+        for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
+            csr->df_ops_goodput[op] = static_cast<double>(df_ops_good_resps[op]) / elapsed_ * 1000000;
+        }
         csr->min_percli_tput = min_throughput;
         csr->max_percli_tput = max_throughput;
     }
@@ -717,6 +736,7 @@ void PrintHeader(std::ostream& os) {
        << "client:req_dropped_rps,";
     for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
         os << df_ops_name[op] << "_throughput,"
+           << df_ops_name[op] << "_goodput,"
            << df_ops_name[op] << "_p50,"
            << df_ops_name[op] << "_p90,"
            << df_ops_name[op] << "_p99";
@@ -840,6 +860,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
               << cs->req_dropped_rps << ",";
     for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
         std::cout << cs->df_ops_rps[op] << ","
+				  << cs->df_ops_goodput[op] << ","
                   << df_ops_p50[op] << ","
                   << df_ops_p90[op] << ","
                   << df_ops_p99[op];
@@ -868,6 +889,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
             << cs->req_dropped_rps << ",";
     for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
         csv_out << cs->df_ops_rps[op] << ","
+                << cs->df_ops_goodput[op] << ","
                 << df_ops_p50[op] << ","
                 << df_ops_p90[op] << ","
                 << df_ops_p99[op];
@@ -932,6 +954,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
              << "\"client:req_dropped_rps\":" << cs->req_dropped_rps << ",";
     for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
         json_out << "\"" << df_ops_name[op] << "_throughput\":" << cs->df_ops_rps[op] << ",";
+        json_out << "\"" << df_ops_name[op] << "_goodput\":" << cs->df_ops_goodput[op] << ",";
         json_out << "\"" << df_ops_name[op] << "_p50\":" << df_ops_p50[op] << ",";
         json_out << "\"" << df_ops_name[op] << "_p90\":" << df_ops_p90[op] << ",";
         json_out << "\"" << df_ops_name[op] << "_p99\":" << df_ops_p99[op];
@@ -969,6 +992,9 @@ void SteadyStateExperiment(int threads, double offered_rps) {
         cs.df_ops_rps[op] = csr.df_ops_rps[op];
     }
     cs.goodput = csr.goodput;
+    for (int op = 0; op < DATAFRAME_OP_NUM_OPS; ++op) {
+        cs.df_ops_goodput[op] = csr.df_ops_goodput[op];
+    }
     cs.min_percli_tput = csr.min_percli_tput;
     cs.max_percli_tput = csr.max_percli_tput;
     cs.winu_rx_pps = static_cast<double>(csr.winu_rx) / elapsed * 1000000;

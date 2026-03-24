@@ -358,13 +358,13 @@ header = "num_clients,offered_load,throughput,goodput,cpu,membw,power"\
          ",server:resp_tx_pps,client:min_tput,client:max_tput"\
          ",client:winu_rx_pps,client:winu_tx_pps,client:resp_rx_pps,client:req_tx_pps"\
          ",client:win_expired_wps,client:req_dropped_rps"\
-         ",op_max_throughput,op_max_p50,op_max_p90,op_max_p99"\
-         ",op_rmv_throughput,op_rmv_p50,op_rmv_p90,op_rmv_p99"\
-         ",op_kmeans_throughput,op_kmeans_p50,op_kmeans_p90,op_kmeans_p99"\
-         ",op_ppo_throughput,op_ppo_p50,op_ppo_p90,op_ppo_p99"\
-         ",op_decom_throughput,op_decom_p50,op_decom_p90,op_decom_p99"\
-         ",op_decay_throughput,op_decay_p50,op_decay_p90,op_decay_p99"\
-         ",op_ad_throughput,op_ad_p50,op_ad_p90,op_ad_p99"
+         ",op_max_throughput,op_max_goodput,op_max_p50,op_max_p90,op_max_p99"\
+         ",op_rmv_throughput,op_rmv_goodput,op_rmv_p50,op_rmv_p90,op_rmv_p99"\
+         ",op_kmeans_throughput,op_kmeans_goodput,op_kmeans_p50,op_kmeans_p90,op_kmeans_p99"\
+         ",op_ppo_throughput,op_ppo_goodput,op_ppo_p50,op_ppo_p90,op_ppo_p99"\
+         ",op_decom_throughput,op_decom_goodput,op_decom_p50,op_decom_p90,op_decom_p99"\
+         ",op_decay_throughput,op_decay_goodput,op_decay_p50,op_decay_p90,op_decay_p99"\
+         ",op_ad_throughput,op_ad_goodput,op_ad_p50,op_ad_p90,op_ad_p99"
 cmd = "echo \"{}\" > {}/output.csv".format(header, output_dir)
 execute_local(cmd)
 cmd = "cat output.csv >> {}/output.csv".format(output_dir)
