@@ -189,6 +189,8 @@ struct cstat_raw {
   double cpu_bound_req_rps;
   double mem_bound_req_rps;
   double goodput;
+  double cpu_bound_req_goodput;
+  double mem_bound_req_goodput;
   double min_percli_tput;
   double max_percli_tput;
   uint64_t ecredit_rx;
@@ -205,6 +207,8 @@ struct cstat {
   double cpu_bound_req_rps;
   double mem_bound_req_rps;
   double goodput;
+  double cpu_bound_req_goodput;
+  double mem_bound_req_goodput;
   double min_percli_tput;
   double max_percli_tput;
   double ecredit_rx_pps;
@@ -318,6 +322,8 @@ class NetBarrier {
         csr->cpu_bound_req_rps += rem_csr.cpu_bound_req_rps;
         csr->mem_bound_req_rps += rem_csr.mem_bound_req_rps;
         csr->goodput += rem_csr.goodput;
+        csr->cpu_bound_req_goodput += rem_csr.cpu_bound_req_goodput;
+        csr->mem_bound_req_goodput += rem_csr.mem_bound_req_goodput;
         csr->min_percli_tput =
             MIN(rem_csr.min_percli_tput, csr->min_percli_tput);
         csr->max_percli_tput =
@@ -1097,6 +1103,8 @@ std::vector<work_unit> RunExperiment(
   double min_throughput = 0.0;
   double max_throughput = 0.0;
   uint64_t good_resps = 0;
+  uint64_t cpu_bound_req_good_resps = 0;
+  uint64_t mem_bound_req_good_resps = 0;
   uint64_t resps = 0;
   uint64_t cpu_bound_req_resps = 0;
   uint64_t mem_bound_req_resps = 0;
@@ -1107,6 +1115,8 @@ std::vector<work_unit> RunExperiment(
     auto &v = *samples[i];
     double throughput;
     int slo_success;
+    int cpu_bound_slo_success;
+    int mem_bound_slo_success;
     int resp_success;
     int cpu_bound_req_success;
     int mem_bound_req_success;
@@ -1141,12 +1151,20 @@ std::vector<work_unit> RunExperiment(
     slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
       return s.success && s.duration_us < slo;
     });
+    cpu_bound_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+      return s.success && s.duration_us < slo && s.is_cpu_bound_req;
+    });
+    mem_bound_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+      return s.success && s.duration_us < slo && !s.is_cpu_bound_req;
+    });
     throughput = static_cast<double>(resp_success) / elapsed_ * 1000000;
 
     resps += resp_success;
     cpu_bound_req_resps += cpu_bound_req_success;
     mem_bound_req_resps += mem_bound_req_success;
     good_resps += slo_success;
+    cpu_bound_req_good_resps += cpu_bound_slo_success;
+    mem_bound_req_good_resps += mem_bound_slo_success;
     if (i == 0) {
       min_throughput = throughput;
       max_throughput = throughput;
@@ -1165,6 +1183,8 @@ std::vector<work_unit> RunExperiment(
     csr->cpu_bound_req_rps = static_cast<double>(cpu_bound_req_resps) / elapsed_ * 1000000;
     csr->mem_bound_req_rps = static_cast<double>(mem_bound_req_resps) / elapsed_ * 1000000;
     csr->goodput = static_cast<double>(good_resps) / elapsed_ * 1000000;
+    csr->cpu_bound_req_goodput = static_cast<double>(cpu_bound_req_good_resps) / elapsed_ * 1000000;
+    csr->mem_bound_req_goodput = static_cast<double>(mem_bound_req_good_resps) / elapsed_ * 1000000;
     csr->req_dropped = client_drop;
     csr->min_percli_tput = min_throughput;
     csr->max_percli_tput = max_throughput;
@@ -1221,6 +1241,8 @@ void PrintHeader(std::ostream &os) {
      << "cpu_bound_req_throughput,"
      << "mem_bound_req_throughput,"
      << "goodput,"
+     << "cpu_bound_req_goodput,"
+     << "mem_bound_req_goodput,"
      << "cpu,"
      << "membw,"
      << "power,"
@@ -1427,7 +1449,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	    << cs->offered_rps << "," << cs->rps << ","
 	    << cs->cpu_bound_req_rps << "," << cs->mem_bound_req_rps << ","
-	    << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+	    << cs->goodput << "," << cs->cpu_bound_req_goodput << "," << cs->mem_bound_req_goodput << ","
+		<< ss->cpu_usage << "," << ss->membw_usage << ","
 		<< ss->power_usage << "," << min << "," << mean << ","
 	    << p50 << "," << cpu_bound_req_p50 << "," << mem_bound_req_p50 << ","
 	    << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
@@ -1452,7 +1475,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	  << cs->offered_rps << "," << cs->rps << ","
 	  << cs->cpu_bound_req_rps << "," << cs->mem_bound_req_rps << ","
-	  << cs->goodput << "," << ss->cpu_usage << "," << ss->membw_usage << ","
+      << cs->goodput << "," << cs->cpu_bound_req_goodput << "," << cs->mem_bound_req_goodput << ","
+      << ss->cpu_usage << "," << ss->membw_usage << ","
       << ss->power_usage << "," << min << "," << mean << ","
 	  << p50 << "," << cpu_bound_req_p50 << "," << mem_bound_req_p50 << ","
 	  << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
@@ -1482,6 +1506,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
            << "\"cpu_bound_req_throughput\":" << cs->cpu_bound_req_rps << ","
            << "\"mem_bound_req_throughput\":" << cs->mem_bound_req_rps << ","
            << "\"goodput\":" << cs->goodput << ","
+           << "\"cpu_bound_req_goodput\":" << cs->cpu_bound_req_goodput << ","
+           << "\"mem_bound_req_goodput\":" << cs->mem_bound_req_goodput << ","
            << "\"cpu\":" << ss->cpu_usage << ","
            << "\"membw\":" << ss->membw_usage << ","
            << "\"power\":" << ss->power_usage << ","
@@ -1585,6 +1611,8 @@ void LoadShiftExperiment(int threads) {
              csr.cpu_bound_req_rps,
              csr.mem_bound_req_rps,
              csr.goodput,
+             csr.cpu_bound_req_goodput,
+             csr.mem_bound_req_goodput,
              csr.min_percli_tput,
              csr.max_percli_tput,
              static_cast<double>(csr.ecredit_rx) / elapsed * 1000000,
@@ -1631,6 +1659,8 @@ void SteadyStateExperiment(int threads, double offered_rps) {
              csr.cpu_bound_req_rps,
              csr.mem_bound_req_rps,
              csr.goodput,
+             csr.cpu_bound_req_goodput,
+             csr.mem_bound_req_goodput,
              csr.min_percli_tput,
              csr.max_percli_tput,
              static_cast<double>(csr.ecredit_rx) / elapsed * 1000000,

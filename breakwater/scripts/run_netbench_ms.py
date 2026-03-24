@@ -350,7 +350,7 @@ cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/output.csv ./"\
 execute_local(cmd)
 # Add the header to the raw output CSV file
 header = "num_threads,offered_load,throughput,cpu_bound_req_throughput,"\
-         "mem_bound_req_throughput,goodput,min,mean,p50,cpu_bound_req_p50,"\
+         "mem_bound_req_throughput,goodput,cpu_bound_req_goodput,mem_bound_req_goodput,min,mean,p50,cpu_bound_req_p50,"\
          "mem_bound_req_p50,p90,cpu_bound_req_p90,mem_bound_req_p90,p99,"\
          "cpu_bound_req_p99,mem_bound_req_p99,p999,p9999,max,reject_min,"\
          "reject_mean,reject_p50,reject_p99,p1_credit,mean_credit,p99_credit,"\
@@ -358,8 +358,9 @@ header = "num_threads,offered_load,throughput,cpu_bound_req_throughput,"\
          "client:ecredit_rx_pps,client:cupdate_tx_pps,client:resp_rx_pps,client:req_tx_pps,"\
          "client:credit_expired_cps,client:req_dropped_rps,"
 for i in range(NUM_SERVERS):
-    header += "server{0}:cpu_bound_req_throughput,"\
-               "server{0}:mem_bound_req_throughput,server{0}:cpu,server{0}:membw,server{0}:power,server{0}:rx_pps,server{0}:tx_pps,"\
+    header += "server{0}:cpu_bound_req_throughput,server{0}:mem_bound_req_throughput,"\
+               "server{0}:cpu_bound_req_goodput,server{0}:mem_bound_req_goodput,"\
+               "server{0}:cpu,server{0}:membw,server{0}:power,server{0}:rx_pps,server{0}:tx_pps,"\
                "server{0}:rx_bps,server{0}:tx_bps,server{0}:rx_drops_pps,server{0}:rx_ooo_pps,"\
                "server{0}:cupdate_rx_pps,server{0}:ecredit_tx_pps,server{0}:credit_tx_cps,"\
                "server{0}:req_rx_pps,server{0}:req_drop_rate,server{0}:resp_tx_pps,server{0}:reject_mean,"\

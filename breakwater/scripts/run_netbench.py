@@ -338,7 +338,7 @@ cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/output.csv ./"\
         " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH)
 execute_local(cmd)
 # Add the header to the raw output CSV file
-header = "num_clients,offered_load,throughput,cpu_bound_req_throughput,mem_bound_req_throughput,goodput,cpu,membw,power"\
+header = "num_clients,offered_load,throughput,cpu_bound_req_throughput,mem_bound_req_throughput,goodput,cpu_bound_req_goodput,mem_bound_req_goodput,cpu,membw,power"\
          ",min,mean,p50,cpu_bound_req_p50,mem_bound_req_p50,p90,cpu_bound_req_p90,mem_bound_req_p90,p99"\
          ",cpu_bound_req_p99,mem_bound_req_p99,p999,p9999,max,reject_min,reject_mean,reject_p50,reject_p99"\
          ",p1_credit,mean_credit,p99_credit,p1_q,mean_q,p99_q,mean_stime,p99_stime,server:rx_pps"\

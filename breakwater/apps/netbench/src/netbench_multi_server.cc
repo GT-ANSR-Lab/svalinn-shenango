@@ -197,6 +197,10 @@ struct cstat_raw {
   double per_server_cpu_bound_req_rps[16];
   double per_server_mem_bound_req_rps[16];
   double goodput;
+  double cpu_bound_req_goodput;
+  double mem_bound_req_goodput;
+  double per_server_cpu_bound_req_goodput[16];
+  double per_server_mem_bound_req_goodput[16];
   double min_percli_tput;
   double max_percli_tput;
   uint64_t ecredit_rx;
@@ -215,6 +219,10 @@ struct cstat {
   double per_server_cpu_bound_req_rps[16];
   double per_server_mem_bound_req_rps[16];
   double goodput;
+  double cpu_bound_req_goodput;
+  double mem_bound_req_goodput;
+  double per_server_cpu_bound_req_goodput[16];
+  double per_server_mem_bound_req_goodput[16];
   double min_percli_tput;
   double max_percli_tput;
   double ecredit_rx_pps;
@@ -342,6 +350,12 @@ class NetBarrier {
             csr->per_server_mem_bound_req_rps[i] += rem_csr.per_server_mem_bound_req_rps[i];
         }
         csr->goodput += rem_csr.goodput;
+        csr->cpu_bound_req_goodput += rem_csr.cpu_bound_req_goodput;
+        csr->mem_bound_req_goodput += rem_csr.mem_bound_req_goodput;
+        for (int i = 0; i < num_servers; ++i) {
+            csr->per_server_cpu_bound_req_goodput[i] += rem_csr.per_server_cpu_bound_req_goodput[i];
+            csr->per_server_mem_bound_req_goodput[i] += rem_csr.per_server_mem_bound_req_goodput[i];
+        }
         csr->min_percli_tput =
             MIN(rem_csr.min_percli_tput, csr->min_percli_tput);
         csr->max_percli_tput =
@@ -1165,6 +1179,10 @@ std::vector<work_unit> RunExperiment(
   double min_throughput = 0.0;
   double max_throughput = 0.0;
   uint64_t good_resps = 0;
+  uint64_t cpu_bound_req_good_resps = 0;
+  uint64_t mem_bound_req_good_resps = 0;
+  uint64_t per_server_cpu_bound_req_good_resps[16] = {0};
+  uint64_t per_server_mem_bound_req_good_resps[16] = {0};
   uint64_t resps = 0;
   uint64_t cpu_bound_req_resps = 0;
   uint64_t mem_bound_req_resps = 0;
@@ -1177,6 +1195,10 @@ std::vector<work_unit> RunExperiment(
     auto &v = *samples[i];
     double throughput;
     int slo_success;
+    int cpu_bound_req_slo_success;
+    int mem_bound_req_slo_success;
+    int per_server_cpu_bound_req_slo_success[16];
+    int per_server_mem_bound_req_slo_success[16];
     int resp_success;
     int cpu_bound_req_success;
     int mem_bound_req_success;
@@ -1222,6 +1244,21 @@ std::vector<work_unit> RunExperiment(
     slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
       return s.success && s.duration_us < slo;
     });
+
+    cpu_bound_req_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+      return s.success && s.is_cpu_bound_req && s.duration_us < slo;
+    });
+    mem_bound_req_slo_success = std::count_if(v.begin(), v.end(), [](const work_unit &s) {
+      return s.success && !s.is_cpu_bound_req && s.duration_us < slo;
+    });
+    for (int i = 0; i < num_servers; ++i) {
+        per_server_cpu_bound_req_slo_success[i] = std::count_if(v.begin(), v.end(), [&, i](const work_unit &s) {
+                return s.success && (s.served_by == (uint64_t)i) && s.is_cpu_bound_req && s.duration_us < slo;
+            });
+        per_server_mem_bound_req_slo_success[i] = std::count_if(v.begin(), v.end(), [&, i](const work_unit &s) {
+                return s.success && (s.served_by == (uint64_t)i) && !s.is_cpu_bound_req && s.duration_us < slo;
+            });
+    }
     throughput = static_cast<double>(resp_success) / elapsed_ * 1000000;
 
     resps += resp_success;
@@ -1232,6 +1269,12 @@ std::vector<work_unit> RunExperiment(
         per_server_mem_bound_req_resps[i] += per_server_mem_bound_req_success[i];
     }
     good_resps += slo_success;
+    cpu_bound_req_good_resps += cpu_bound_req_slo_success;
+    mem_bound_req_good_resps += mem_bound_req_slo_success;
+    for (int i = 0; i < num_servers; ++i) {
+        per_server_cpu_bound_req_good_resps[i] += per_server_cpu_bound_req_slo_success[i];
+        per_server_mem_bound_req_good_resps[i] += per_server_mem_bound_req_slo_success[i];
+    }
     if (i == 0) {
       min_throughput = throughput;
       max_throughput = throughput;
@@ -1254,6 +1297,12 @@ std::vector<work_unit> RunExperiment(
         csr->per_server_mem_bound_req_rps[i] = static_cast<double>(per_server_mem_bound_req_resps[i]) / elapsed_ * 1000000;
     }
     csr->goodput = static_cast<double>(good_resps) / elapsed_ * 1000000;
+    csr->cpu_bound_req_goodput = static_cast<double>(cpu_bound_req_good_resps) / elapsed_ * 1000000;
+    csr->mem_bound_req_goodput = static_cast<double>(mem_bound_req_good_resps) / elapsed_ * 1000000;
+    for (int i = 0; i < num_servers; ++i) {
+        csr->per_server_cpu_bound_req_goodput[i] = static_cast<double>(per_server_cpu_bound_req_good_resps[i]) / elapsed_ * 1000000;
+        csr->per_server_mem_bound_req_goodput[i] = static_cast<double>(per_server_mem_bound_req_good_resps[i]) / elapsed_ * 1000000;
+    }
     csr->req_dropped = client_drop;
     csr->min_percli_tput = min_throughput;
     csr->max_percli_tput = max_throughput;
@@ -1312,6 +1361,8 @@ void PrintHeader(std::ostream &os) {
      << "cpu_bound_req_throughput,"
      << "mem_bound_req_throughput,"
      << "goodput,"
+     << "cpu_bound_req_goodput,"
+     << "mem_bound_req_goodput,"
      << "min,"
      << "mean,"
      << "p50,"
@@ -1350,6 +1401,8 @@ void PrintHeader(std::ostream &os) {
   for (int i = 0; i < num_servers; ++i) {
       os << "server" << i << ":cpu_bound_req_throughput,"
          << "server" << i << ":mem_bound_req_throughput,"
+         << "server" << i << ":cpu_bound_req_goodput,"
+         << "server" << i << ":mem_bound_req_goodput,"
          << "server" << i << ":cpu,"
          << "server" << i << ":membw,"
          << "server" << i << ":power,"
@@ -1559,7 +1612,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	    << cs->offered_rps << "," << cs->rps << ","
         << cs->cpu_bound_req_rps << "," << cs->mem_bound_req_rps << ","
-        << cs->goodput << ","
+        << cs->goodput << "," << cs->cpu_bound_req_goodput << "," << cs->mem_bound_req_goodput << ","
 	    << min << "," << mean << ","
         << p50 << "," << cpu_bound_req_p50 << "," << mem_bound_req_p50 << ","
         << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
@@ -1578,6 +1631,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   for (int i = 0; i < num_servers; ++i) {
       std::cout << cs->per_server_cpu_bound_req_rps[i] << ","
                 << cs->per_server_mem_bound_req_rps[i] << ","
+                << cs->per_server_cpu_bound_req_goodput[i] << ","
+                << cs->per_server_mem_bound_req_goodput[i] << ","
                 << ss[i].cpu_usage << ","
                 << ss[i].membw_usage << ","
                 << ss[i].power_usage << ","
@@ -1604,7 +1659,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   csv_out << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	    << cs->offered_rps << "," << cs->rps << ","
         << cs->cpu_bound_req_rps << "," << cs->mem_bound_req_rps << ","
-        << cs->goodput << ","
+        << cs->goodput << "," << cs->cpu_bound_req_goodput << "," << cs->mem_bound_req_goodput << ","
 	    << min << "," << mean << ","
         << p50 << "," << cpu_bound_req_p50 << "," << mem_bound_req_p50 << ","
         << p90 << "," << cpu_bound_req_p90 << "," << mem_bound_req_p90 << ","
@@ -1623,6 +1678,8 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
   for (int i = 0; i < num_servers; ++i) {
       csv_out << cs->per_server_cpu_bound_req_rps[i] << ","
                 << cs->per_server_mem_bound_req_rps[i] << ","
+                << cs->per_server_cpu_bound_req_goodput[i] << ","
+                << cs->per_server_mem_bound_req_goodput[i] << ","
                 << ss[i].cpu_usage << ","
                 << ss[i].membw_usage << ","
                 << ss[i].power_usage << ","
@@ -1700,6 +1757,12 @@ void LoadShiftExperiment(int threads) {
       cs.per_server_mem_bound_req_rps[i] = csr.per_server_mem_bound_req_rps[i];
   }
   cs.goodput = csr.goodput;
+  cs.cpu_bound_req_goodput = csr.cpu_bound_req_goodput;
+  cs.mem_bound_req_goodput = csr.mem_bound_req_goodput;
+  for (int i = 0; i < num_servers; ++i) {
+      cs.per_server_cpu_bound_req_goodput[i] = csr.per_server_cpu_bound_req_goodput[i];
+      cs.per_server_mem_bound_req_goodput[i] = csr.per_server_mem_bound_req_goodput[i];
+  }
   cs.min_percli_tput = csr.min_percli_tput;
   cs.max_percli_tput = csr.max_percli_tput;
   cs.ecredit_rx_pps = static_cast<double>(csr.ecredit_rx) / elapsed * 1000000;
@@ -1750,6 +1813,12 @@ void SteadyStateExperiment(int threads, double offered_rps) {
       cs.per_server_mem_bound_req_rps[i] = csr.per_server_mem_bound_req_rps[i];
   }
   cs.goodput = csr.goodput;
+  cs.cpu_bound_req_goodput = csr.cpu_bound_req_goodput;
+  cs.mem_bound_req_goodput = csr.mem_bound_req_goodput;
+  for (int i = 0; i < num_servers; ++i) {
+      cs.per_server_cpu_bound_req_goodput[i] = csr.per_server_cpu_bound_req_goodput[i];
+      cs.per_server_mem_bound_req_goodput[i] = csr.per_server_mem_bound_req_goodput[i];
+  }
   cs.min_percli_tput = csr.min_percli_tput;
   cs.max_percli_tput = csr.max_percli_tput;
   cs.ecredit_rx_pps = static_cast<double>(csr.ecredit_rx) / elapsed * 1000000;
