@@ -7,16 +7,16 @@
 #include <stdint.h>
 
 /* AQM drop threshold */
-#define SPCC_QDELAY_BUDGET            200
+#define SPCC_QDELAY_BUDGET            222
 
 /* Round trip time in us */
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (300)
+#define SPCC_PRE_MI_US              (200)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (1000)
+#define SPCC_MI_US                  (2000)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -49,6 +49,41 @@
  */
 #define SPCC_MICRO_EXP_PERTURB_CB             (0)
 
+
+static inline double spcc_util_fn_tput(
+    uint64_t in_cnt,
+    uint64_t out_cnt,
+    uint64_t drop_cnt,
+    uint64_t qdelay,
+    uint64_t mem_accesses,
+    double energy_consumed,
+    uint64_t duration) {
+
+    double tput_rps = (double)out_cnt / (double)duration;
+    tput_rps *= 1000000.0;
+
+    return tput_rps;
+}
+
+static inline double spcc_util_fn_qdelay(
+    uint64_t in_cnt,
+    uint64_t out_cnt,
+    uint64_t drop_cnt,
+    uint64_t qdelay,
+    uint64_t mem_accesses,
+    double energy_consumed,
+    uint64_t duration) {
+
+    double tput_rps = (double)out_cnt / (double)duration;
+    tput_rps *= 1000000.0;
+
+    if (qdelay >= SPCC_QDELAY_BUDGET) {
+        return -tput_rps;
+    }
+
+    return tput_rps;
+}
+
 static inline double spcc_util_fn_drop(
     uint64_t in_cnt,
     uint64_t out_cnt,
@@ -61,7 +96,6 @@ static inline double spcc_util_fn_drop(
     double drop_rate = (double)drop_cnt / (double)in_cnt;
     double dropped_rps = (double)drop_cnt / (double)duration;
     double tput_rps = (double)out_cnt / (double)duration;
-
     dropped_rps *= 1000000.0;
     tput_rps *= 1000000.0;
 
@@ -72,8 +106,7 @@ static inline double spcc_util_fn_drop(
     return tput_rps - dropped_rps;
 }
 
-
-static inline double spcc_util_fn_tput(
+static inline double spcc_util_fn_power(
     uint64_t in_cnt,
     uint64_t out_cnt,
     uint64_t drop_cnt,
@@ -82,27 +115,16 @@ static inline double spcc_util_fn_tput(
     double energy_consumed,
     uint64_t duration) {
 
-    double tput_rps = (double)out_cnt / (double)duration;
+    /* XXX: This utility requires the monitor interval to be at least 1ms,
+     *      as RAPL (power/energy) counters are updated by the hardware
+     *      every ~1ms. Using 2ms monitor interval duration works well.
+     */
 
-    tput_rps *= 1000000.0;
+    double duration_sec = (double)duration / 1000000.0;
+    double power = energy_consumed / duration_sec;
+    double tput_rps = (double)out_cnt / duration_sec;
 
-    return tput_rps;
-}
-
-static inline double spcc_util_fn_tput_qdelay(
-    uint64_t in_cnt,
-    uint64_t out_cnt,
-    uint64_t drop_cnt,
-    uint64_t qdelay,
-    uint64_t mem_accesses,
-    double energy_consumed,
-    uint64_t duration) {
-
-    double tput_rps = (double)out_cnt / (double)duration;
-
-    tput_rps *= 1000000.0;
-
-    if (qdelay >= SPCC_QDELAY_BUDGET) {
+    if (power >= 55.0) {
         return -tput_rps;
     }
 
@@ -120,7 +142,9 @@ static inline double spcc_util_fn(
     uint64_t duration) {
 
     return spcc_util_fn_tput(in_cnt, out_cnt, drop_cnt, qdelay, mem_accesses, energy_consumed, duration);
+    /* return spcc_util_fn_qdelay(in_cnt, out_cnt, drop_cnt, qdelay, mem_accesses, energy_consumed, duration); */
     /* return spcc_util_fn_drop(in_cnt, out_cnt, drop_cnt, qdelay, mem_accesses, energy_consumed, duration); */
+    /* return spcc_util_fn_power(in_cnt, out_cnt, drop_cnt, qdelay, mem_accesses, energy_consumed, duration); */
 }
 
 /* The maximum supported window size */
