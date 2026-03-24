@@ -23,18 +23,18 @@ RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
-OVERLOAD_ALG = "protego"
+OVERLOAD_ALG = "pcc"
 
 # Memory semaphore settings
-MSEM_ENABLE = "msem"
-MSEM_CTL_DELAY_US = 3000
-MSEM_ALPHA = 0.8
+MSEM_ENABLE = True
+MSEM_CTL_DELAY_US = 500
+MSEM_ALPHA = 0.6
 MSEM_TARGET_NORM_MEMBW = 1.0
 MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
 
 # Total number of client connections
-NUM_CONNS = 100
+NUM_CONNS = 144
 # Total number of server machines
 NUM_SERVERS = len(SERVERS)
 # Total number of client machines (master and agents)
@@ -43,8 +43,8 @@ NUM_CLIENTS = len(CLIENTS)
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 1
-MAX_OFFERED_LOAD = 1000000
+NUM_SAMPLES = 10
+MAX_OFFERED_LOAD = 400000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 LOAD_SHIFT = False
 if LOAD_SHIFT:
@@ -54,7 +54,7 @@ if LOAD_SHIFT:
 # Network RTT on the testbed
 NET_RTT = 10
 # SLO = 10 * (average RPC processing time + network RTT)
-SLO = 3000
+SLO = 650
 
 # Netbench settings
 CPU_BOUND_WORK_ITR = 5000
@@ -286,7 +286,7 @@ for offered_load in OFFERED_LOADS:
     print("\tStarting netbench server...")
     cmd = " cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} server.config"\
           " server {} >stdout.out 2>&1"\
-          .format(ARTIFACT_PATH, OVERLOAD_ALG, MSEM_ENABLE)
+          .format(ARTIFACT_PATH, OVERLOAD_ALG, "msem" if MSEM_ENABLE else "no_msem")
     server_sessions = execute_remote(server_conns, cmd, False)
 
     # This sleep should be enough to complete the prepopulation at the server
