@@ -644,13 +644,14 @@ static void wakeup_drained_session(int stype, int num_session)
 	}
 }
 
+
 static void srpc_update_credit_pool()
 {
 	uint64_t now;
-	int64_t in_cnt;
-	int64_t out_cnt;
-	int64_t last_in_cnt;
-	int64_t last_out_cnt;
+	uint64_t in_cnt;
+	uint64_t out_cnt;
+	uint64_t last_in_cnt;
+	uint64_t last_out_cnt;
 	int old_cp;
 	int new_cp;
 	int credit_used;
@@ -663,8 +664,8 @@ static void srpc_update_credit_pool()
 
     now = microtime();
 	tdiff = now - srpc_cm_last_update;
-
 	if (tdiff < SRPC_CM_P99_RTT) {
+//        if (tdiff < 2 * (atomic_read(&srpc_avg_st[0]) + 10)) {
 		spin_unlock_np(&srpc_cm_lock);
 		return;
 	}
@@ -677,6 +678,7 @@ static void srpc_update_credit_pool()
 	}
 
 	if (tdiff < SRPC_CM_UPDATE_INTERVAL) {
+//        if (tdiff < 4 * (atomic_read(&srpc_avg_st[0]) + 10)) {
 		spin_unlock_np(&srpc_cm_lock);
 		return;
 	}
@@ -694,32 +696,62 @@ static void srpc_update_credit_pool()
 	last_in_cnt = atomic64_read(&srpc_cm_last_in);
 	last_out_cnt = atomic64_read(&srpc_cm_last_out);
 
-#define ABS(x) (((x) < 0) ? -(x) : (x))
+	double slope = 0.0;
 
-    int64_t in_delta = ABS(in_cnt - last_in_cnt);
-    int64_t out_delta = ABS(out_cnt - last_out_cnt);
-
-    double curr_tput = (double)(out_cnt) / tdiff;
-
-    if ((in_delta * out_delta) > 0) {
-        double slope = (double)out_delta / (double)in_delta;
-        if (slope > SRPC_CM_SLOPE_THRESH) {
-            new_cp = incr_credit_pool(0, 0);
-			/* printf("[%lu] INCR increase credit pool: tput = %lf, out = %ld, in = %ld, " */
-            /*        "slope = %lf, cp:%d -> %d\n", */
-            /*        now, curr_tput, out_delta, in_delta, slope, old_cp, new_cp); */
-        } else {
-            new_cp = decr_credit_pool(0, 0);
-			/* printf("[%lu] DECR increase credit pool: tput = %lf, out = %ld, in = %ld, " */
-            /*        "slope = %lf, cp:%d -> %d\n", */
-            /*        now, curr_tput, out_delta, in_delta, slope, old_cp, new_cp); */
-        }
-    } else {
-        new_cp = decr_credit_pool(0, 0);
-        /* printf("[%lu] DECR (ZERO) increase credit pool: tput = %lf, out = %ld, in = %ld, " */
-        /*        "cp:%d -> %d\n", */
-        /*        now, curr_tput, out_delta, in_delta, old_cp, new_cp); */
-    }
+	if (in_cnt == 0) {
+		new_cp = incr_credit_pool(0, 0);
+	}else if (in_cnt >= last_in_cnt) {
+		// INCR phase
+		if (in_cnt > last_in_cnt) slope = (int)(out_cnt - last_out_cnt) / (double)((int)(in_cnt - last_in_cnt));
+		else if (out_cnt > last_out_cnt) slope = 10.0;
+		else if (out_cnt < last_out_cnt) slope = -10.0;
+		else slope = 0.0;
+		if (out_cnt > last_out_cnt &&
+		    SRPC_CM_SLOPE_INV * (out_cnt - last_out_cnt) >= (in_cnt - last_in_cnt) &&
+		    credit_used >= new_cp) {
+			// slope > 0.25
+			new_cp = incr_credit_pool(0, 0);
+			//printf("[%lu] INCR increase credit pool: out = %ld, in = %ld, cp:%d -> %d\n",
+			//       now, out_cnt - last_out_cnt, in_cnt - last_in_cnt, old_cp, new_cp);
+			/*
+			printf("%lu,%lf,%d,%d,%d,%lf\n",
+			       now, slope, new_cp, credit_used,
+			       atomic_read(&srpc_num_pending[0]), runtime_load());
+			*/
+		} else {
+			new_cp = decr_credit_pool(0, 0);
+			//printf("[%lu] INCR decrease credit pool: out = %ld, in = %ld, cp:%d -> %d\n",
+			//       now, out_cnt - last_out_cnt, in_cnt - last_in_cnt, old_cp, new_cp);
+			/*
+			printf("%lu,%lf,%d,%d,%d,%lf\n",
+			       now, slope, new_cp, credit_used,
+			       atomic_read(&srpc_num_pending[0]), runtime_load());
+			*/
+		}
+	} else {
+		// DECR phase
+		if (last_out_cnt > out_cnt &&
+		    SRPC_CM_SLOPE_INV * (last_out_cnt - out_cnt) > (last_in_cnt - in_cnt) &&
+		    credit_used >= new_cp) {
+			new_cp = incr_credit_pool(0, 0);
+			//printf("[%lu] DECR increase credit pool: out = %ld, in = %ld, cp:%d -> %d\n",
+			//       now, out_cnt - last_out_cnt, in_cnt - last_in_cnt, old_cp, new_cp);
+			/*
+			printf("%lu,%lf,%d,%d,%d,%lf\n",
+			       now, slope, new_cp, credit_used,
+			       atomic_read(&srpc_num_pending[0]), runtime_load());
+			*/
+		} else {
+			new_cp = decr_credit_pool(0, 0);
+			//printf("[%lu] DECR decrease credit pool: out = %ld, in = %ld, cp:%d -> %d\n",
+			//       now, out_cnt - last_out_cnt, in_cnt - last_in_cnt, old_cp, new_cp);
+			/*
+			printf("%lu,%lf,%d,%d,%d,%lf\n",
+			       now, slope, new_cp, credit_used,
+			       atomic_read(&srpc_num_pending[0]), runtime_load());
+			*/
+		}
+	}
 
 	credit_unused = new_cp - credit_used;
 	wakeup_drained_session(0, credit_unused);
@@ -731,6 +763,7 @@ static void srpc_update_credit_pool()
 	atomic64_write(&srpc_cm_out_cnt, 0);
 	atomic64_write(&srpc_cm_drop_cnt, 0);
 }
+
 
 /* srpc_handle_req_drop: a routine called when a request is dropped while
  * enqueueing
