@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <breakwater/pcc.h>
 
 /* Queueing delay budget of a request */
 #define SPCC_QDELAY_BUDGET            300
@@ -49,18 +50,20 @@
  */
 #define SPCC_MICRO_EXP_PERTURB_CB             (1)
 
-/* The utility function */
-static inline double spcc_util_fn(
-    uint64_t in_cnt,
-    uint64_t out_cnt,
-    uint64_t drop_cnt,
-    uint64_t qdelay,
-    uint64_t mem_accesses,
-    double energy_consumed,
-    uint64_t duration) {
+/* The utility calculation function */
+static inline double spcc_calc_util_fn(struct spcc_micro_exp_stats *stats) {
 
-    return (double)(out_cnt) / (double)duration;
+    return (double)(stats->out_resps) / (double)(stats->duration);
 }
+
+/* The utility comparison function */
+static inline bool spcc_comp_util_fn(
+    struct spcc_micro_exp_stats *minus_stats,
+    struct spcc_micro_exp_stats *plus_stats) {
+
+    return plus_stats->utility > minus_stats->utility;
+}
+
 
 /* The maximum supported window size */
 #define SPCC_MAX_WINDOW_EXP         6

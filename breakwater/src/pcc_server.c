@@ -176,7 +176,7 @@ static enum spcc_ctl_state      srpc_pcc_state;
  * microexperiment is running. The next two elements in the array (index 1
  * and 2) are reserved for the two microexperiment.
  *
- * As of now four values are recorded for every microexperiment:
+ * As of the following metrics are recorded for every microexperiment:
  *   1) Input requests received
  *   2) Output responses sent
  *   3) Dropped requests
@@ -186,12 +186,12 @@ static enum spcc_ctl_state      srpc_pcc_state;
  *   7) Memory accesses
  *   8) Energy consumed
  */
-static atomic64_t               srpc_pcc_in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-static atomic64_t               srpc_pcc_out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-static atomic64_t               srpc_pcc_drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_in_reqs[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_out_resps[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_drop_reqs[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
-static atomic64_t               srpc_pcc_qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_qdelay[SPCC_MAX_NUM_MICRO_EXPS+1];
 static uint64_t                 srpc_pcc_mem_accesses[SPCC_MAX_NUM_MICRO_EXPS+1];
 static double                   srpc_pcc_energy_consumed[SPCC_MAX_NUM_MICRO_EXPS+1];
 
@@ -693,15 +693,7 @@ static void srpc_update_credit_pool()
     int credit_used;
     int credit_unused;
     int micro_exp_id;
-    uint64_t in_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t out_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t drop_cnts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t qdelays[SPCC_MAX_NUM_MICRO_EXPS+1];
-    uint64_t mem_accesses[SPCC_MAX_NUM_MICRO_EXPS+1];
-    double energy_consumed[SPCC_MAX_NUM_MICRO_EXPS+1];
-    double utils[SPCC_MAX_NUM_MICRO_EXPS+1];
+    struct spcc_micro_exp_stats stats[SPCC_MAX_NUM_MICRO_EXPS+1];
     bool do_wakeup;
 #if SPCC_MICRO_EXP_STRICT_LABELLING == 1
     int plus_micro_exp_id;
@@ -752,10 +744,10 @@ static void srpc_update_credit_pool()
         micro_exp_id = srpc_pcc_num_micro_exps + 1;
 
         /* Clear the stats */
-        atomic64_write(&srpc_pcc_in_cnts[micro_exp_id], 0);
-        atomic64_write(&srpc_pcc_out_cnts[micro_exp_id], 0);
-        atomic64_write(&srpc_pcc_drop_cnts[micro_exp_id], 0);
-        atomic64_write(&srpc_pcc_qdelays[micro_exp_id], runtime_queue_us());
+        atomic64_write(&srpc_pcc_in_reqs[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_out_resps[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_drop_reqs[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_qdelay[micro_exp_id], runtime_queue_us());
         srpc_pcc_mem_accesses[micro_exp_id] = runtime_glob_mem_accesses();
         srpc_pcc_energy_consumed[micro_exp_id] = runtime_glob_energy_consumed();
 
@@ -818,24 +810,24 @@ static void srpc_update_credit_pool()
         /* Calculate the utilities for each microexperiment */
         for (int i = 1; i <= SPCC_MAX_NUM_MICRO_EXPS; ++i) {
             /* Read the performance stat */
-            in_cnts[i] = atomic64_read(&srpc_pcc_in_cnts[i]);
-            out_cnts[i] = atomic64_read(&srpc_pcc_out_cnts[i]);
-            drop_cnts[i] = atomic64_read(&srpc_pcc_drop_cnts[i]);
-            start_ts[i] = atomic64_read(&srpc_pcc_start_ts[i]);
-            end_ts[i] = atomic64_read(&srpc_pcc_end_ts[i]);
-            qdelays[i] = atomic64_read(&srpc_pcc_qdelays[i]);
-            mem_accesses[i] = srpc_pcc_mem_accesses[i];
-            energy_consumed[i] = srpc_pcc_energy_consumed[i];
+            stats[i].duration = atomic64_read(&srpc_pcc_end_ts[i]) -    \
+                atomic64_read(&srpc_pcc_start_ts[i]);
+            stats[i].in_reqs = atomic64_read(&srpc_pcc_in_reqs[i]);
+            stats[i].out_resps = atomic64_read(&srpc_pcc_out_resps[i]);
+            stats[i].drop_reqs = atomic64_read(&srpc_pcc_drop_reqs[i]);
+            stats[i].qdelay = atomic64_read(&srpc_pcc_qdelay[i]);
+            stats[i].mem_accesses = srpc_pcc_mem_accesses[i];
+            stats[i].energy_consumed = srpc_pcc_energy_consumed[i];
 
-            /* Compute the operator-defined utility */
-            utils[i] = spcc_util_fn(in_cnts[i], out_cnts[i], drop_cnts[i],
-                                    qdelays[i], mem_accesses[i], energy_consumed[i],
-                                    end_ts[i] - start_ts[i]);
+            /* Calculate the operator-defined utility */
+            stats[i].utility = spcc_calc_util_fn(&stats[i]);
 
-            SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_cnts=%ld, out_cnts=%ld,"
-                           " drop_cnts=%ld, qdelay=%ld, duration=%ld -> utility=%lf\n",
-                           now, i, in_cnts[i], out_cnts[i], drop_cnts[i], qdelays[i],
-                           end_ts[i] - start_ts[i], utils[i]);
+            SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_reqs=%ld, out_resps=%ld,"
+                           " drop_reqs=%ld, qdelay=%ld, duration=%ld, mem_accesses=%ld,"
+                           " energy_consumed=%lf -> utility=%lf\n",
+                           now, i, stats[i].in_reqs, stats[i].out_resps, stats[i].drop_reqs,
+                           stats[i].qdelay, stats[i].duration, stats[i].mem_accesses,
+                           stats[i].energy_consumed, stats[i].utility);
         }
 
         /* Get the current credit pool size */
@@ -847,7 +839,7 @@ static void srpc_update_credit_pool()
          */
         plus_micro_exp_id = (srpc_pcc_micro_exp_dirs[1] == 1) ? 1 : 2;
         minus_micro_exp_id = (srpc_pcc_micro_exp_dirs[1] == -1) ? 1 : 2;
-        if (in_cnts[plus_micro_exp_id] <= in_cnts[minus_micro_exp_id]) {
+        if (stats[plus_micro_exp_id].in_reqs <= stats[minus_micro_exp_id].in_reqs) {
             SPCC_DEBUG_LOG("[%ld] Inconclusive experiments. Microexperiment %d "
                            "(dir=1) received less load than microexperiment %d "
                            "(dir=-1)\n", now, plus_micro_exp_id, minus_micro_exp_id);
@@ -856,28 +848,30 @@ static void srpc_update_credit_pool()
 #endif
 
         /* Compare the utilities */
-        if (in_cnts[1] > in_cnts[2]) {
+        if (!stats[1].in_reqs || !stats[2].in_reqs) {
+            new_cp = incr_credit_pool();
+        } else if (stats[1].in_reqs > stats[2].in_reqs) {
             /* If the received input requests (proxy for load) is more in the first
               microexperiment than the second microexperiment.*/
             SPCC_DEBUG_LOG("[%ld] Microexperiment 1 (dir=%d) received more"
                            " load than 2 (dir=%d)\n", now,
                            srpc_pcc_micro_exp_dirs[1], srpc_pcc_micro_exp_dirs[2]);
 
-            if (utils[1] > utils[2]) {
+            if (spcc_comp_util_fn(&stats[2], &stats[1])) {
                 /* More load, gave better utility, so increase the credit pool size */
                 new_cp = incr_credit_pool();
             } else {
                 /* Less load, gave better or equal utility, so decrease the credit pool size */
                 new_cp = decr_credit_pool();
             }
-        } else if (in_cnts[2] > in_cnts[1]) {
+        } else if (stats[2].in_reqs > stats[1].in_reqs) {
             /* If the received input requests (proxy for load) is more in the second
               microexperiment than the first microexperiment.*/
             SPCC_DEBUG_LOG("[%ld] Microexperiment 2 (dir=%d) received more"
                            " load than 1 (dir=%d)\n", now,
                            srpc_pcc_micro_exp_dirs[2], srpc_pcc_micro_exp_dirs[1]);
 
-            if (utils[2] > utils[1]) {
+            if (spcc_comp_util_fn(&stats[1], &stats[2])) {
                 /* More load, gave better utility, so increase the credit pool size */
                 new_cp = incr_credit_pool();
             } else {
@@ -972,14 +966,14 @@ static void srpc_worker(void *arg)
      */
     if (srpc_pcc_micro_exp_id == micro_exp_id) {
         if (!c->cmn.drop) {
-            atomic64_inc(&srpc_pcc_out_cnts[micro_exp_id]);
+            atomic64_inc(&srpc_pcc_out_resps[micro_exp_id]);
         } else {
-            atomic64_inc(&srpc_pcc_drop_cnts[micro_exp_id]);
+            atomic64_inc(&srpc_pcc_drop_reqs[micro_exp_id]);
         }
         atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
         uint64_t qdelay = runtime_queue_us();
-        if (qdelay > atomic64_read(&srpc_pcc_qdelays[micro_exp_id])) {
-            atomic64_write(&srpc_pcc_qdelays[micro_exp_id], qdelay);
+        if (qdelay > atomic64_read(&srpc_pcc_qdelay[micro_exp_id])) {
+            atomic64_write(&srpc_pcc_qdelay[micro_exp_id], qdelay);
         }
     }
 
@@ -1031,12 +1025,26 @@ again:
 
     switch (chdr.op) {
     case PCC_OP_CALL:
+        micro_exp_id = (uint64_t)srpc_pcc_micro_exp_id;
+
         atomic64_inc(&srpc_stat_req_rx_);
+        if (srpc_pcc_micro_exp_id == micro_exp_id) {
+            atomic64_inc(&srpc_pcc_in_reqs[micro_exp_id]);
+        }
+
         /* reserve a slot */
         idx = srpc_get_slot(s);
         if (unlikely(idx < 0)) {
             tcp_read_full(s->cmn.c, buf_tmp, chdr.len);
             atomic64_inc(&srpc_stat_req_dropped_);
+            if (srpc_pcc_micro_exp_id == micro_exp_id) {
+                atomic64_inc(&srpc_pcc_drop_reqs[micro_exp_id]);
+                atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
+                us = runtime_queue_us();
+                if (us > atomic64_read(&srpc_pcc_qdelay[micro_exp_id])) {
+                    atomic64_write(&srpc_pcc_qdelay[micro_exp_id], us);
+                }
+            }
             return 0;
         }
         c = s->slots[idx];
@@ -1054,7 +1062,7 @@ again:
         c->cmn.resp_len = 0;
         c->cmn.id = chdr.id;
         c->ts_sent = chdr.ts_sent;
-        c->opaque = micro_exp_id = (uint64_t)srpc_pcc_micro_exp_id;
+        c->opaque = micro_exp_id;
 
         spin_lock_np(&s->lock);
         old_demand = s->demand;
@@ -1069,9 +1077,6 @@ again:
         }
 
         atomic_inc(&srpc_num_pending);
-        if (srpc_pcc_micro_exp_id == micro_exp_id) {
-            atomic64_inc(&srpc_pcc_in_cnts[micro_exp_id]);
-        }
 
         /* perform AQM */
         us = runtime_queue_us();
@@ -1089,10 +1094,10 @@ again:
                 thread_ready(th);
             atomic64_inc(&srpc_stat_req_dropped_);
             if (srpc_pcc_micro_exp_id == micro_exp_id) {
-                atomic64_inc(&srpc_pcc_drop_cnts[micro_exp_id]);
+                atomic64_inc(&srpc_pcc_drop_reqs[micro_exp_id]);
                 atomic64_write(&srpc_pcc_end_ts[micro_exp_id], microtime());
-                if (us > atomic64_read(&srpc_pcc_qdelays[micro_exp_id])) {
-                    atomic64_write(&srpc_pcc_qdelays[micro_exp_id], us);
+                if (us > atomic64_read(&srpc_pcc_qdelay[micro_exp_id])) {
+                    atomic64_write(&srpc_pcc_qdelay[micro_exp_id], us);
                 }
             }
             goto again;

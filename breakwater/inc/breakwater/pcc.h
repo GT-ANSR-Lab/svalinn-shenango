@@ -50,6 +50,18 @@ enum spcc_ctl_state {
 /* Number of microexperiments to be performed */
 #define SPCC_MAX_NUM_MICRO_EXPS       2
 
+/* Per-microexperiment statistics */
+struct spcc_micro_exp_stats {
+    uint64_t duration;
+    uint64_t in_reqs;
+    uint64_t out_resps;
+    uint64_t drop_reqs;
+    uint64_t qdelay;
+    uint64_t mem_accesses;
+    double energy_consumed;
+    double utility;
+};
+
 
 /* for RPC client */
 struct cpcc_session {
