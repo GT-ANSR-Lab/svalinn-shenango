@@ -188,6 +188,7 @@ static enum spcc_ctl_state      srpc_pcc_state;
  */
 static atomic64_t               srpc_pcc_in_reqs[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_out_resps[SPCC_MAX_NUM_MICRO_EXPS+1];
+static atomic64_t               srpc_pcc_good_out_resps[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_drop_reqs[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_start_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
 static atomic64_t               srpc_pcc_end_ts[SPCC_MAX_NUM_MICRO_EXPS+1];
@@ -746,6 +747,7 @@ static void srpc_update_credit_pool()
         /* Clear the stats */
         atomic64_write(&srpc_pcc_in_reqs[micro_exp_id], 0);
         atomic64_write(&srpc_pcc_out_resps[micro_exp_id], 0);
+        atomic64_write(&srpc_pcc_good_out_resps[micro_exp_id], 0);
         atomic64_write(&srpc_pcc_drop_reqs[micro_exp_id], 0);
         atomic64_write(&srpc_pcc_qdelay[micro_exp_id], runtime_queue_us());
         srpc_pcc_mem_accesses[micro_exp_id] = runtime_glob_mem_accesses();
@@ -814,6 +816,7 @@ static void srpc_update_credit_pool()
                 atomic64_read(&srpc_pcc_start_ts[i]);
             stats[i].in_reqs = atomic64_read(&srpc_pcc_in_reqs[i]);
             stats[i].out_resps = atomic64_read(&srpc_pcc_out_resps[i]);
+            stats[i].good_out_resps = atomic64_read(&srpc_pcc_good_out_resps[i]);
             stats[i].drop_reqs = atomic64_read(&srpc_pcc_drop_reqs[i]);
             stats[i].qdelay = atomic64_read(&srpc_pcc_qdelay[i]);
             stats[i].mem_accesses = srpc_pcc_mem_accesses[i];
@@ -822,12 +825,12 @@ static void srpc_update_credit_pool()
             /* Calculate the operator-defined utility */
             stats[i].utility = spcc_calc_util_fn(&stats[i]);
 
-            SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_reqs=%ld, out_resps=%ld,"
+            SPCC_DEBUG_LOG("[%ld] Microexperiment=%d -> in_reqs=%ld, out_resps=%ld, good_out_resps=%ld,"
                            " drop_reqs=%ld, qdelay=%ld, duration=%ld, mem_accesses=%ld,"
                            " energy_consumed=%lf -> utility=%lf\n",
-                           now, i, stats[i].in_reqs, stats[i].out_resps, stats[i].drop_reqs,
-                           stats[i].qdelay, stats[i].duration, stats[i].mem_accesses,
-                           stats[i].energy_consumed, stats[i].utility);
+                           now, i, stats[i].in_reqs, stats[i].out_resps, stats[i].good_out_resps,
+                           stats[i].drop_reqs, stats[i].qdelay, stats[i].duration,
+                           stats[i].mem_accesses, stats[i].energy_consumed, stats[i].utility);
         }
 
         /* Get the current credit pool size */
@@ -967,6 +970,9 @@ static void srpc_worker(void *arg)
     if (srpc_pcc_micro_exp_id == micro_exp_id) {
         if (!c->cmn.drop) {
             atomic64_inc(&srpc_pcc_out_resps[micro_exp_id]);
+            if (get_acc_qdel_us() < SPCC_QDELAY_BUDGET) {
+                atomic64_inc(&srpc_pcc_good_out_resps[micro_exp_id]);
+            }
         } else {
             atomic64_inc(&srpc_pcc_drop_reqs[micro_exp_id]);
         }

@@ -55,6 +55,7 @@ struct spcc_micro_exp_stats {
     uint64_t duration;
     uint64_t in_reqs;
     uint64_t out_resps;
+    uint64_t good_out_resps;
     uint64_t drop_reqs;
     uint64_t qdelay;
     uint64_t mem_accesses;

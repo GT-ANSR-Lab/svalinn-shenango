@@ -14,10 +14,10 @@
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (100)
+#define SPCC_PRE_MI_US              (200)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (100)
+#define SPCC_MI_US                  (1000)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -57,6 +57,14 @@ static inline double spcc_calc_util_fn_tput(struct spcc_micro_exp_stats *stats) 
     tput_rps *= 1000000.0;
 
     return tput_rps;
+}
+
+static inline double spcc_calc_util_fn_gput(struct spcc_micro_exp_stats *stats) {
+
+    double gput_rps = (double)(stats->good_out_resps) / (double)(stats->duration);
+    gput_rps *= 1000000.0;
+
+    return gput_rps;
 }
 
 static inline double spcc_calc_util_fn_qdelay(struct spcc_micro_exp_stats *stats) {
@@ -108,17 +116,41 @@ static inline double spcc_calc_util_fn_power(struct spcc_micro_exp_stats *stats)
 static inline double spcc_calc_util_fn(struct spcc_micro_exp_stats *stats) {
 
     return spcc_calc_util_fn_tput(stats);
+    /* return spcc_calc_util_fn_gput(stats); */
     /* return spcc_calc_util_fn_qdelay(stats); */
     /* return spcc_calc_util_fn_drop(stats); */
     /* return spcc_calc_util_fn_power(stats); */
 }
 
 /* The utility comparison function */
-static inline bool spcc_comp_util_fn(
+static inline bool spcc_comp_util_fn_simple(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
     return plus_stats->utility > minus_stats->utility;
+}
+
+static inline bool spcc_comp_util_fn_protego(
+    struct spcc_micro_exp_stats *minus_stats,
+    struct spcc_micro_exp_stats *plus_stats) {
+
+    double in_reqs_delta = (int)plus_stats->in_reqs - (int)minus_stats->in_reqs;
+    double out_resps_delta = (int)plus_stats->good_out_resps - (int)minus_stats->good_out_resps;
+    double slope = out_resps_delta / in_reqs_delta;
+
+    if (slope > 0.4) {
+        return true;
+    }
+
+    return false;
+}
+
+static inline bool spcc_comp_util_fn(
+    struct spcc_micro_exp_stats *minus_stats,
+    struct spcc_micro_exp_stats *plus_stats) {
+
+    return spcc_comp_util_fn_simple(minus_stats, plus_stats);
+    /* return spcc_comp_util_fn_protego(minus_stats, plus_stats); */
 }
 
 
