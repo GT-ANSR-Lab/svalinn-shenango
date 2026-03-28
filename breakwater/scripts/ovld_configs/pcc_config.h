@@ -123,14 +123,18 @@ static inline double spcc_calc_util_fn(struct spcc_micro_exp_stats *stats) {
 }
 
 /* The utility comparison function */
-static inline bool spcc_comp_util_fn_simple(
+static inline enum spcc_dir spcc_comp_util_fn_simple(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
-    return plus_stats->utility > minus_stats->utility;
+    if (plus_stats->utility > minus_stats->utility) {
+        return SPCC_DIR_PLUS;
+    }
+
+    return SPCC_DIR_MINUS;
 }
 
-static inline bool spcc_comp_util_fn_protego(
+static inline enum spcc_dir spcc_comp_util_fn_protego(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
@@ -138,14 +142,14 @@ static inline bool spcc_comp_util_fn_protego(
     double out_resps_delta = (int)plus_stats->good_out_resps - (int)minus_stats->good_out_resps;
     double slope = out_resps_delta / in_reqs_delta;
 
-    if (slope > 0.4) {
-        return true;
+    if (slope > 0.1) {
+        return SPCC_DIR_PLUS;
     }
 
-    return false;
+    return SPCC_DIR_MINUS;
 }
 
-static inline bool spcc_comp_util_fn(
+static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 

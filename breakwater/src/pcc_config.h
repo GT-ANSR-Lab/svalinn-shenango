@@ -57,11 +57,15 @@ static inline double spcc_calc_util_fn(struct spcc_micro_exp_stats *stats) {
 }
 
 /* The utility comparison function */
-static inline bool spcc_comp_util_fn(
+static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
-    return plus_stats->utility > minus_stats->utility;
+    if (plus_stats->utility > minus_stats->utility) {
+        return SPCC_DIR_PLUS;
+    }
+
+    return SPCC_DIR_MINUS;
 }
 
 

@@ -696,6 +696,7 @@ static void srpc_update_credit_pool()
     int micro_exp_id;
     struct spcc_micro_exp_stats stats[SPCC_MAX_NUM_MICRO_EXPS+1];
     bool do_wakeup;
+    enum spcc_dir update_dir;
 #if SPCC_MICRO_EXP_STRICT_LABELLING == 1
     int plus_micro_exp_id;
     int minus_micro_exp_id;
@@ -852,7 +853,7 @@ static void srpc_update_credit_pool()
 
         /* Compare the utilities */
         if (!stats[1].in_reqs || !stats[2].in_reqs) {
-            new_cp = incr_credit_pool();
+            update_dir = SPCC_DIR_PLUS;
         } else if (stats[1].in_reqs > stats[2].in_reqs) {
             /* If the received input requests (proxy for load) is more in the first
               microexperiment than the second microexperiment.*/
@@ -860,13 +861,7 @@ static void srpc_update_credit_pool()
                            " load than 2 (dir=%d)\n", now,
                            srpc_pcc_micro_exp_dirs[1], srpc_pcc_micro_exp_dirs[2]);
 
-            if (spcc_comp_util_fn(&stats[2], &stats[1])) {
-                /* More load, gave better utility, so increase the credit pool size */
-                new_cp = incr_credit_pool();
-            } else {
-                /* Less load, gave better or equal utility, so decrease the credit pool size */
-                new_cp = decr_credit_pool();
-            }
+            update_dir = spcc_comp_util_fn(&stats[2], &stats[1]);
         } else if (stats[2].in_reqs > stats[1].in_reqs) {
             /* If the received input requests (proxy for load) is more in the second
               microexperiment than the first microexperiment.*/
@@ -874,16 +869,25 @@ static void srpc_update_credit_pool()
                            " load than 1 (dir=%d)\n", now,
                            srpc_pcc_micro_exp_dirs[2], srpc_pcc_micro_exp_dirs[1]);
 
-            if (spcc_comp_util_fn(&stats[1], &stats[2])) {
-                /* More load, gave better utility, so increase the credit pool size */
-                new_cp = incr_credit_pool();
-            } else {
-                /* Less load, gave better or equal utility, so decrease the credit pool size */
-                new_cp = decr_credit_pool();
-            }
+            update_dir = spcc_comp_util_fn(&stats[1], &stats[2]);
         } else {
             /* Received the same number of input requests in both the microexperiments */
             SPCC_DEBUG_LOG("[%ld] Both microexperiments experienced same load\n", now);
+        }
+
+        /* Update the rate */
+        switch (update_dir) {
+        case SPCC_DIR_MINUS:
+            new_cp = decr_credit_pool();
+            break;
+        case SPCC_DIR_STAY:
+            break;
+        case SPCC_DIR_PLUS:
+            new_cp = incr_credit_pool();
+            break;
+        default:
+            SPCC_DEBUG_LOG("[%ld] Invalid direction of change - %d\n", now, update_dir);
+            break;
         }
 
         /* Update the rate */

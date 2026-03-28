@@ -63,6 +63,12 @@ struct spcc_micro_exp_stats {
     double utility;
 };
 
+/* Direction of credit pool update */
+enum spcc_dir {
+    SPCC_DIR_MINUS = -1,
+    SPCC_DIR_STAY,
+    SPCC_DIR_PLUS
+};
 
 /* for RPC client */
 struct cpcc_session {
