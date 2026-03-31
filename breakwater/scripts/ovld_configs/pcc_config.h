@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <math.h>
 #include <breakwater/pcc.h>
 
 /* AQM drop threshold */
@@ -134,6 +135,24 @@ static inline enum spcc_dir spcc_comp_util_fn_simple(
     return SPCC_DIR_MINUS;
 }
 
+static inline enum spcc_dir spcc_comp_util_fn_deadband(
+    struct spcc_micro_exp_stats *minus_stats,
+    struct spcc_micro_exp_stats *plus_stats) {
+
+    double util_diff = fabs(plus_stats->utility - minus_stats->utility);
+    double util_diff_pcnt = util_diff / minus_stats->utility;
+
+    if (util_diff_pcnt < 0.1) {
+        return SPCC_DIR_STAY;
+    }
+
+    if (plus_stats->utility > minus_stats->utility) {
+        return SPCC_DIR_PLUS;
+    }
+
+    return SPCC_DIR_MINUS;
+}
+
 static inline enum spcc_dir spcc_comp_util_fn_protego(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
@@ -154,6 +173,7 @@ static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *plus_stats) {
 
     return spcc_comp_util_fn_simple(minus_stats, plus_stats);
+    /* return spcc_comp_util_fn_deadband(minus_stats, plus_stats); */
     /* return spcc_comp_util_fn_protego(minus_stats, plus_stats); */
 }
 
