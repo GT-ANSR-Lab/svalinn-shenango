@@ -23,10 +23,10 @@ RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
-OVERLOAD_ALG = "pcc"
+OVERLOAD_ALG = "protego"
 
 # Memory semaphore settings
-MSEM_ENABLE = True
+MSEM_ENABLE = False
 MSEM_CTL_DELAY_US = 500
 MSEM_ALPHA = 0.6
 MSEM_TARGET_NORM_MEMBW = 1.0
@@ -41,13 +41,12 @@ NUM_CLIENTS = len(CLIENTS)
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 30
+NUM_SAMPLES = 20
 MAX_OFFERED_LOAD = 800000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 
 # Network RTT on the testbed
 NET_RTT = 10
-# SLO = 10 * (average RPC processing time + network RTT)
 SLO = 1000
 
 # Memcached settings
@@ -59,6 +58,7 @@ MC_LO_LKEY_SIZE = 800000
 MC_HI_LKEY_SIZE = 1200000
 MC_LKEY_COUNT = 5000
 MC_SKEY_PCNT = 72
+MC_WORKLOAD = "BIMOD_VAR"
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
@@ -307,8 +307,8 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting Memcached client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/memcached/client/mcclient {} client.config client {:d} {}"\
-            " BIMOD_VAR 100000 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
-            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"],
+            " {} 100000 {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} {:d} 0 >stdout.out 2>&1"\
+            .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS, SERVERS[0]["ip"], MC_WORKLOAD,
                     MC_LO_SKEY_SIZE, MC_HI_SKEY_SIZE, MC_SKEY_COUNT, MC_LO_LKEY_SIZE,
                     MC_HI_LKEY_SIZE, MC_LKEY_COUNT, MC_SKEY_PCNT, SLO, NUM_AGENTS, offered_load)
     client_agent_sessions += execute_remote([client_conn], cmd, False)

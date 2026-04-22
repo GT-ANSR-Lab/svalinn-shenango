@@ -4,32 +4,27 @@
 
 #pragma once
 
-/* Recommended parameters with 1,000 clinets
-*  in XL170 environment
-* - 1 us average service time
-* #define CSD_MAX_CLIENT_DELAY_US	10
-* #define CSD_TB_INIT_RATE		4
-* #define CSD_TB_MIN_RATE		2
-* #define SEDA_TARGET			50
-* #define SEDA_ADJ_I			120
-* #define SEDA_ADJ_D			1.04
-*
-* - 10 us average service time
-* #define CSD_MAX_CLIENT_DELAY_US	100
-* #define CSD_TB_INIT_RATE		4
-* #define CSD_TB_MIN_RATE		2
-* #define SEDA_TARGET			80
-* #define SEDA_ADJ_I			40
-* #define SEDA_ADJ_D			1.04
-*
-* - 100 us average service time
-* #define CSD_MAX_CLIENT_DELAY_US	100
-* #define CSD_TB_INIT_RATE		4
-* #define CSD_TB_MIN_RATE		2
-* #define SEDA_TARGET			720
-* #define SEDA_ADJ_I			10
-* #define SEDA_ADJ_D			1.3
-*/
+/*
+ * Parameters used in Svalinn evaluation (on xl170)
+ *
+ * Netbench
+ * #define SEDA_TARGET			400
+ * #define SEDA_TIMEOUT			1000
+ *
+ * RocksDB
+ * #define SEDA_TARGET			1250
+ * #define SEDA_TIMEOUT			2000
+ *
+ * Dataframe
+ * #define SEDA_TARGET			4240
+ * #define SEDA_TIMEOUT			5000
+ *
+ * Memcached
+ * #define SEDA_TARGET			1000
+ * #define SEDA_TIMEOUT			2000
+ *
+ */
+
 
 /* maximum client delay */
 #define CSD_MAX_CLIENT_DELAY_US		100

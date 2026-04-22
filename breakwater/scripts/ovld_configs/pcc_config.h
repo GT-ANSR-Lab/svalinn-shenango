@@ -8,6 +8,32 @@
 #include <math.h>
 #include <breakwater/pcc.h>
 
+/*
+ * Parameters used in Svalinn evaluation (on xl170)
+ *
+ * Netbench
+ * #define SPCC_QDELAY_BUDGET          250
+ * #define SPCC_PRE_MI_US              (300)
+ * #define SPCC_MI_US                  (700)
+ *
+ * RocksDB
+ * #define SPCC_QDELAY_BUDGET          800
+ * #define SPCC_PRE_MI_US              (300)
+ * #define SPCC_MI_US                  (600)
+ *
+ * Dataframe
+ * #define SPCC_QDELAY_BUDGET          3120
+ * #define SPCC_PRE_MI_US              (100)
+ * #define SPCC_MI_US                  (200)
+ *
+ * Memcached
+ * #define SPCC_QDELAY_BUDGET          200
+ * #define SPCC_PRE_MI_US              (300)
+ * #define SPCC_MI_US                  (1000)
+ *
+ */
+
+
 /* AQM drop threshold */
 #define SPCC_QDELAY_BUDGET            200
 
@@ -49,7 +75,7 @@
 /* Flag to enable or disable perturbing the credit pool
  * by epsilon credits before starting the microexperiments.
  */
-#define SPCC_MICRO_EXP_PERTURB_CB             (0)
+#define SPCC_MICRO_EXP_PERTURB_CB             (1)
 
 
 static inline double spcc_calc_util_fn_tput(struct spcc_micro_exp_stats *stats) {

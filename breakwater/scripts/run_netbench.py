@@ -41,7 +41,7 @@ NUM_CLIENTS = len(CLIENTS)
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 3
+NUM_SAMPLES = 20
 MAX_OFFERED_LOAD = 1000000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 LOAD_SHIFT = False
@@ -51,8 +51,7 @@ if LOAD_SHIFT:
 
 # Network RTT on the testbed
 NET_RTT = 10
-# SLO = 10 * (average RPC processing time + network RTT)
-SLO = 315
+SLO = 400
 
 # Netbench settings
 CPU_BOUND_WORK_ITR = 5000

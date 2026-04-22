@@ -4,20 +4,23 @@
 
 #pragma once
 
-/* Recommended parameters (in XL170 environment)
-* - Memcached 25 / 50
-* - 1 us average service time
-* #define SBW_MIN_DELAY_US		40
-* #define SBW_DROP_THRESH		80
-*
-* - 10 us average service time
-* #define SBW_MIN_DELAY_US		80
-* #define SBW_DROP_THRESH		160
-*
-* - 100 us average service time
-* #define SBW_MIN_DELAY_US		150
-* #define SBW_DROP_THRESH		300
-*/
+/*
+ * Parameters used in Svalinn evaluation (on xl170)
+ *
+ * Netbench
+ * #define SBW_LATENCY_BUDGET			250
+ *
+ * RocksDB
+ * #define SBW_LATENCY_BUDGET			800
+ *
+ * Dataframe
+ * #define SBW_LATENCY_BUDGET			3120
+ *
+ * Memcached
+ * #define SBW_LATENCY_BUDGET			200
+ *
+ */
+
 
 /* delay threshold for AQM */
 #define SBW_LATENCY_BUDGET			70

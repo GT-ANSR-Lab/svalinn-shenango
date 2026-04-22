@@ -1,28 +1,65 @@
-## Notes
-* The benchmarks are tested on `xl170`, `c6525-25g` machines on Cloudlab and `asta`, `gon` on GT Cluster.
-* The image used to deploy the hosts is `urn:publicid:IDN+utah.cloudlab.us+image+cc-profiler-PG0:shubuntu24linux68mlnxofed`.
-* You can use [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile to deploy an experiment on Cloudlab.
+# Svalinn for Shenango
 
-## Setup steps
-* Deploy the nodes in Cloudlab using [this](https://www.cloudlab.us/p/CC-Profiler/2-type-nodes-sh) profile.
-* SSH setup
-  - Create SSH public-private key pairs on all the nodes using `ssh-keygen -t rsa`
-  - Add the `~/.ssh/id_rsa.pub` of the node, where we are going to clone this repository and run the tests from (for e.g., node-1), to all the other nodes' `~/.ssh/authorized_keys`, including itself.
-* Clone this repository (run on node-1)
-  - `git clone https://github.gatech.edu/HeteroBench/caladan-all.git`
-  - `git checkout <branch>` (branch will be either main or main-old)
-* Update config_remote.py (run on node-1)
-  - Update `NODES` with the DNS names or IP addresses of the nodes in your test setup.
-  - `NODES[0]` is the server, rest of the nodes are the clients.
-  - `NODES[1]` is the master client, rest of the clients are secondary clients (agents).
-  - Update `USERNAME` with the one that has access to all the nodes.
-  - Update `KEY_LOCATION` with the path to the private key `~/.ssh/id_rsa`.
-* Perform general setup on all nodes (run on node-1)
-  - `./setup_remote.py`
-* Perform application-specific setup on all nodes (run on node-1)
-  - `./setup_dataframe.py` or `./setup_rocksdb.py` or any other application-specific setup script.
+This repository has the code for `Svalinn` overload control system for Shenango-based applications as evaluated in `Svalinn` paper (OSDI '26).
+
+## Deploying the testbed
+
+`Svalinn` is tested extensively on `xl170` and `c6525-25g` machines on [Cloudlab](https://cloudlab.us/). This [Cloudlab Profile](https://www.cloudlab.us/p/CC-Profiler/1-type-nodes-sh) can be used to deploy a cluster of nodes for evaluating `Svalinn`. Deploying the profile requires the user to set three options
+1. **OS image** - Select `Shenango Image (Ubuntu 24.04 + Linux Kernel 6.8)`. This image installs `Ubuntu 24.04` with `Linux kernel 6.8` on all the nodes in the testbed. `Svalinn` is tested extensively on this OS + Kernel combination. This image also comes pre-packaged with the required `Mellanox OFED drivers`. The Cloudlab image used is `urn:publicid:IDN+utah.cloudlab.us+image+cc-profiler-PG0:shubuntu24linux68mlnxofed`.
+2. **Number of Nodes** - At least 2, 1 server and 1 client (preferrably 11, 1 server and 10 clients, to be as close to the paper)
+3. **Node Type** - Select `Cloudlab Utah` and then select either `xl170` or `c6525-25g`. (preferrably `xl170` to be as close to the paper)
+
+## Setting up the testbed
+
+Perform the following steps in order to ensure the deployed testbed is made ready to evaluate `Svalinn`.
+
+### SSH configuration
+
+Create SSH public-private key pairs on all the nodes using `ssh-keygen -t rsa`. Copy the public key `~/.ssh/id_rsa.pub` of the **initiator** machine (the machine from where you will clone the repository and run the configuration and test scripts) to the `~/.ssh/authorized_keys` file on all the nodes. This machine can be your local laptop or one of the deployed nodes on Cloudlab. This machine must have the `paramiko` python3 library installed. If using one of the deployed nodes as the **initiator**, copy the `~/.ssh/id_rsa.pub` of this selected node to the `~/.ssh/authorized_keys` file on all the nodes, **including itself**.
+
+### Clone the repository
+
+Clone the repository using `git clone https://github.com/GT-ANSR-Lab/svalinn-shenango.git` on the **initiator** machine.
+
+### Provide information of the deployed testbed
+
+All of the configuration and test scripts are housed in `svalinn-shenango/breakwater/scripts` directory. Before you can run any script, you must provide the information of the deployed Cloudlab nodes in the `config_remote.py` file. The following things need to be configured in this file
+1. `NODES` - List of deployed Cloudlab nodes. Each node will have an entry (in the format of a python dictionary). You need to configure the name of the node (can be found using `uname -a` on the node); the node type (can be either `xl170` or `c6525-25g`); the NUMA node used to run the system; the number of CPU cores used to run the system; PCIe address of the test NIC (can be found using `ethtool -i <interface_name>`) (note that, this NIC is different than the management NIC); test IP address, Netmask, and Gateway  to be used by the node in Shenango environment.
+2. `SERVERS` - List of nodes to be used as servers. We only need 1 node as as server. Hence, this list should contain only one node from the `NODES` list. Note that, even though only one node is required, `SERVERS` still has to be a python list.
+3. `CLIENTS` - List of nodes to be used as clients. Nodes not used as the servers can be used as the clients.
+4. `USERNAME` - Your Cloudlab username (can be found using `echo $USER` on any node).
+5. `KEY_LOCATION` - The path to the private SSH key on the **initiator** machine. If you are using one of the Cloudlab nodes as the **initiator**, then the path will be `~/.ssh/id_rsa`
+
+This file is not supposed to be executed. You only need to provide the necessary information in this file. The current contents of `config_remote.py` provide an example of a Cloudlab testbed that consists of 12 nodes (11 `xl170` and 1 `c6525-25g`). The NUMA, core count, NIC PCIe address for `xl170` and `c6525-25g` can be seen in the script and you can use the same values if you plan to use these node types while deploying the testbed.
+
+### Updating the NIC firmware (if required)
+
+The Shenango version used with `Svalinn` requires newer NIC firmware to work correctly. On `c6525-25g` Cloudlab machines, an updated NIC firmware is already installed. However, `xl170` Cloudlab machines, a few nodes might not have updated NIC firmware. The NIC firmware version for the test NIC can be checked using `ethtool -i <interface_name>`. If the version is smaller than `4.32.1908`, then you need to update the NIC firmware on that node. There is a script provided in `svalinn-shenango/breakwater/scripts/misc` directory, named `update_xl170_nic_fw.py`, that updates the NIC firmware on `xl170` nodes. You need to find which `xl170` nodes have older NIC firmware, and then update the `NODES_TO_UPDATE` list with those nodes in the `update_xl170_nic_fw.py` script. Once, the list is updated with the `xl170` nodes to update, you should run the script. Updating the firmware takes time, hence, do not kill the script even if it feels stuck for a long time. Once, the script exits successfully, reboot all the Cloudlab nodes from the Cloudlab experiment portal.
+
+### Building Svalinn system
+
+Now that the initial one time setup is done on the deployed nodes, we can build `Svalinn` overload control system. To do so, you need to go into the `svalinn-shenango/breakwater/scripts` and run `setup_remote.py` python script. This script copies the required code over to all the deployed Cloudlab nodes and then build the system. Note that, you only need to run this once after deploying the testbed. If you do not reboot the nodes in between the tests, rerunning the `setup_remote.py` script is not required. However, you need to rerun the script if you reboot the nodes.
+
+### Building Svalinn applications
+
+`Svalinn` was evaluated with four application - netbench (synthetic), rocksdb, memcached, and dataframe. Each application might require its own configuration and building. Hence, every application has its own setup script. For example, if you wish to run netbench on `Svalinn`, then you need to run `setup_netbench.py` script. Note that these per-application scripts should be executed only after running `setup_remote.py`. You dont need to re-run the per-application setup scripts, unless you reboot the nodes.
 
 ## Running the tests
-* Run the application-specific test script (run on node-1)
-  - `./run_dataframe.py` or `./run_rocksdb.py` or any other application-specific test script.
-  - This will save the output of the test run in the `outputs/<app_name>/<date>/<time>` directory.
+
+Once the system and the respective applications are built, we can run the tests. Each application has a test script named `run_*.py`. For example, netbench application has a script named `run_netbench.py`, rocksdb application has a script named `run_rocksdb.py`, and so on. To run the tests you can simply execute the python script corresponding to the required application. The python script takes no command line arguments. The required test settings can be configured by directly updating the variables in the script itself. The important options that need frequent updates are
+1. `OVERLOAD_ALG` - The overload control algorithm to use. This can be `nocontrol`, `breakwater`, `dagor`, `seda`, `protego`, `pcc`. The baselines mentioned in the paper are SEDA and Protego, which can be selected using `seda` and `protego` respectively. For `Svalinn`, the value should be set to `pcc`.
+2. `MSEM_ENABLE` - True, if the application should use the memory semaphore. False, otherwise. When the OVERLOAD_ALG is anything other than `pcc`, this option should be set to False. For `Svalinn` (i.e., `pcc`), this option can be set to True.
+3. `NUM_CONNS` - Total number of client threads across all the client nodes. These threads generate the test traffic to the server.
+4. `NUM_SAMPLES` and `MAX_OFFERED_LOAD` - The offered load points to test. If we set `MAX_OFFERED_LOAD` to 10000 and `NUM_SAMPLES` to 10, the script will run 10 test cases, each increasing the offered load by 1000 Requests Per Second (RPS), till we finally test for the offered load of 10000 RPS.
+5. `SLO` - The latency SLO for the application.
+6. Application specific config - Every application then has some specific configuration options that dictate the nature of the different requests and the request mix. `Svalinn` focuses mostly on CPU-bound and Memory bandwidth-bound requests, hence almost all test scripts have options to configure these two request types. The default values present in the script can be left to evaluate the setting used in the actual paper.
+
+The overload control algorithm parameters are provided in per-algorithm configuration files housed in `ovld_configs` directory. Protego related configuration should be performed in `bw2_config.h`. SEDA related configuration should be performed in `sd_config.h`. And finally, `Svalinn` related configuration should be performed in `pcc_config.h`. Each application will require some changes in the overload control algorithm parameters.
+
+The results of the test run are dumped in the `outputs/<app_name>/<date>/<time>` subdirectory. Once, the test are done running, the exact path where the results are dumped is displayed for convenience. The most important file in this subdirectory would be the `output.csv` file. This file has an entry for every offered load sample the system was tested against. If `NUM_SAMPLES` was 10, this CSV file will have 10 rows.
+
+## Source navigation
+
+1. Svalinn's Utility-based Admission Controller - `svalinn-shenango/breakwater/src/pcc_*`
+2. Svalinn's Memory Semaphore - `svalinn-shenango/m-semaphore`
+3. Evaluated applications - `svalinn-shenango/breakwater/apps/*`
