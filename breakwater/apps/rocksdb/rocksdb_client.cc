@@ -507,9 +507,9 @@ std::vector<work_unit> ClientWorker(
         req->opaque = hton64(i);
         req->is_skey = w[i].is_skey;
         if (w[i].is_skey) {
-            req->key_len = snprintf(req->key, MAX_KEY_SIZE + 1, "skey-%d", w[i].key);
+            req->key_len = snprintf(req->key, MAX_KEY_SIZE + 1, "skey-%016d", w[i].key);
         } else {
-            req->key_len = snprintf(req->key, MAX_KEY_SIZE + 1, "lkey-%d", w[i].key);
+            req->key_len = snprintf(req->key, MAX_KEY_SIZE + 1, "lkey-%016d", w[i].key);
         }
         req->key_len = hton32(req->key_len);
         buflen = sizeof(RocksDBReq);
