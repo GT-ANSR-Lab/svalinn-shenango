@@ -491,6 +491,11 @@ std::vector<work_unit> ClientWorker(
         if (duration_cast<sec>(now - expstart).count() < w[i].start_us) {
             rt::Sleep(w[i].start_us - duration_cast<sec>(now - expstart).count());
         }
+
+	if (i > 1 && w[i-1].start_us <= kWarmUpTime &&
+	    w[i].start_us >= kWarmUpTime)
+	  c->StatClear();
+
         if (duration_cast<sec>(now - expstart).count() - w[i].start_us > kMaxCatchUpUS)
             continue;
 
@@ -562,13 +567,19 @@ std::vector<work_unit> RunExperiment(
     timex = std::time(nullptr);
     auto start = steady_clock::now();
     barrier();
+
     sstat_raw s1, s2;
     shstat_raw sh1, sh2;
 
+    // Clear the stat after warmup time
+    rt::Sleep(kWarmUpTime);
     if (!b || b->IsLeader()) {
         s1 = ReadRPCSStat();
         sh1 = ReadShenangoStat();
     }
+    for (auto &c : conns) {
+      c->StatClear();
+    }    
 
     // Wait for the workers to finish.
     for (auto &t : th) t.Join();
