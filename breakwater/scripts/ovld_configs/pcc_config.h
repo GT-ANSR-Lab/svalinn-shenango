@@ -17,9 +17,10 @@
  * #define SPCC_MI_US                  (700)
  *
  * RocksDB
- * #define SPCC_QDELAY_BUDGET          800
- * #define SPCC_PRE_MI_US              (300)
- * #define SPCC_MI_US                  (600)
+ * #define SPCC_QDELAY_BUDGET          200
+ * #define SPCC_PRE_MI_US              (100)
+ * #define SPCC_MI_US                  (200)
+ * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
  *
  * Dataframe
  * #define SPCC_QDELAY_BUDGET          3120
@@ -41,10 +42,10 @@
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (200)
+#define SPCC_PRE_MI_US              (100)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (1000)
+#define SPCC_MI_US                  (200)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -75,7 +76,7 @@
 /* Flag to enable or disable perturbing the credit pool
  * by epsilon credits before starting the microexperiments.
  */
-#define SPCC_MICRO_EXP_PERTURB_CB             (1)
+#define SPCC_MICRO_EXP_PERTURB_CB             (0)
 
 
 static inline double spcc_calc_util_fn_tput(struct spcc_micro_exp_stats *stats) {
@@ -114,7 +115,7 @@ static inline double spcc_calc_util_fn_drop(struct spcc_micro_exp_stats *stats) 
     dropped_rps *= 1000000.0;
     tput_rps *= 1000000.0;
 
-    if (drop_rate >= 0.1) {
+    if (drop_rate >= 0.2) {
         return -dropped_rps;
     }
 
@@ -168,7 +169,7 @@ static inline enum spcc_dir spcc_comp_util_fn_deadband(
     double util_diff = fabs(plus_stats->utility - minus_stats->utility);
     double util_diff_pcnt = util_diff / minus_stats->utility;
 
-    if (util_diff_pcnt < 0.1) {
+    if (util_diff_pcnt < 0.05) {
         return SPCC_DIR_STAY;
     }
 
@@ -198,8 +199,8 @@ static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
-    return spcc_comp_util_fn_simple(minus_stats, plus_stats);
-    /* return spcc_comp_util_fn_deadband(minus_stats, plus_stats); */
+    /* return spcc_comp_util_fn_simple(minus_stats, plus_stats); */
+    return spcc_comp_util_fn_deadband(minus_stats, plus_stats);
     /* return spcc_comp_util_fn_protego(minus_stats, plus_stats); */
 }
 

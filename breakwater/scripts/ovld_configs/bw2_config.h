@@ -11,7 +11,7 @@
  * #define SBW_LATENCY_BUDGET			250
  *
  * RocksDB
- * #define SBW_LATENCY_BUDGET			800
+ * #define SBW_LATENCY_BUDGET			200
  *
  * Dataframe
  * #define SBW_LATENCY_BUDGET			3120
@@ -23,7 +23,7 @@
 
 
 /* delay threshold for AQM */
-#define SBW_LATENCY_BUDGET			70
+#define SBW_LATENCY_BUDGET			200
 
 #define SRPC_CM_SLOPE_THRESH		0.2
 #define SRPC_CM_SLOPE_INV		4

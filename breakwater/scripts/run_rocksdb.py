@@ -23,12 +23,12 @@ RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
-OVERLOAD_ALG = "protego"
+OVERLOAD_ALG = "pcc"
 
 # Memory semaphore settings
 MSEM_ENABLE = False
 MSEM_CTL_DELAY_US = 500
-MSEM_ALPHA = 0.6
+MSEM_ALPHA = 0.7
 MSEM_TARGET_NORM_MEMBW = 1.0
 MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
@@ -42,7 +42,7 @@ NUM_AGENTS = len(AGENTS)
 
 # List of offered load
 NUM_SAMPLES = 20
-MAX_OFFERED_LOAD = 800000
+MAX_OFFERED_LOAD = 1200000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 
 # Network RTT on the testbed
