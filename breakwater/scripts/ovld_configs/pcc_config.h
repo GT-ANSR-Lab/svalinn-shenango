@@ -21,6 +21,8 @@
  * #define SPCC_PRE_MI_US              (100)
  * #define SPCC_MI_US                  (200)
  * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
+ * calc_util_fn = tput
+ * comp_util_fn = deadband (10%)
  *
  * Dataframe
  * #define SPCC_QDELAY_BUDGET          3120
@@ -31,6 +33,9 @@
  * #define SPCC_QDELAY_BUDGET          200
  * #define SPCC_PRE_MI_US              (300)
  * #define SPCC_MI_US                  (1000)
+ * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
+ * calc_util_fn = tput
+ * comp_util_fn = deadband (10%)
  *
  */
 
@@ -42,10 +47,10 @@
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (100)
+#define SPCC_PRE_MI_US              (300)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (200)
+#define SPCC_MI_US                  (1000)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -169,7 +174,7 @@ static inline enum spcc_dir spcc_comp_util_fn_deadband(
     double util_diff = fabs(plus_stats->utility - minus_stats->utility);
     double util_diff_pcnt = util_diff / minus_stats->utility;
 
-    if (util_diff_pcnt < 0.05) {
+    if (util_diff_pcnt < 0.1) {
         return SPCC_DIR_STAY;
     }
 
