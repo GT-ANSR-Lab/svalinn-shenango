@@ -836,6 +836,7 @@ static void srpc_update_credit_pool()
 
         /* Get the current credit pool size */
         new_cp = atomic_read(&srpc_credit_pool);
+        credit_used = atomic_read(&srpc_credit_used);
 
 #if SPCC_MICRO_EXP_STRICT_LABELLING == 1
         /* Under strict labelling, (+) microexperiment should receive more
@@ -881,9 +882,16 @@ static void srpc_update_credit_pool()
             new_cp = decr_credit_pool();
             break;
         case SPCC_DIR_STAY:
+            if (credit_used < new_cp) {
+                new_cp = decr_credit_pool();
+            }
             break;
         case SPCC_DIR_PLUS:
-            new_cp = incr_credit_pool();
+            if (credit_used >= new_cp) {
+                new_cp = incr_credit_pool();
+            } else {
+                new_cp = decr_credit_pool();
+            }
             break;
         default:
             SPCC_DEBUG_LOG("[%ld] Invalid direction of change - %d\n", now, update_dir);
