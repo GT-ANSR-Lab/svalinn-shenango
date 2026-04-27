@@ -23,10 +23,10 @@ RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
-OVERLOAD_ALG = "protego"
+OVERLOAD_ALG = "pcc"
 
 # Memory semaphore settings
-MSEM_ENABLE = False
+MSEM_ENABLE = True
 MSEM_CTL_DELAY_US = 500
 MSEM_ALPHA = 0.6
 MSEM_TARGET_NORM_MEMBW = 1.0
@@ -34,14 +34,14 @@ MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
 
 # Total number of client connections
-NUM_CONNS = 100
+NUM_CONNS = 99
 # Total number of client machines (master and agents)
 NUM_CLIENTS = len(CLIENTS)
 # Total number of agents
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 20
+NUM_SAMPLES = 1
 MAX_OFFERED_LOAD = 1000000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 LOAD_SHIFT = False
@@ -51,12 +51,13 @@ if LOAD_SHIFT:
 
 # Network RTT on the testbed
 NET_RTT = 10
-SLO = 400
+SLO = 500
 
 # Netbench settings
 CPU_BOUND_WORK_ITR = 5000
 MEM_BOUND_WORK_ITR = 25
-CPU_BOUND_REQ_PCNT = 50
+LOCK_BOUND_WORK_ITR = 5000
+REQ_MIX = "cpu:25,mem:25,lock:50"
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
@@ -287,9 +288,9 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting netbench client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench {} client.config client"\
-          " {} {} {} {} {} {} {} {} {} 1 >stdout.out 2>&1"\
+          " {} {} {} {} {} {} {} {} {} {} 1 >stdout.out 2>&1"\
           .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS,
-                  CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, CPU_BOUND_REQ_PCNT,
+                  CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, LOCK_BOUND_WORK_ITR, REQ_MIX,
                   SLO, NUM_AGENTS, offered_load,
                   "load_shift" if LOAD_SHIFT else "no_load_shift", SERVERS[0]["ip"])
     client_agent_sessions += execute_remote([client_conn], cmd, False)
@@ -337,9 +338,11 @@ cmd = "scp -P 22 -i {} -o StrictHostKeyChecking=no {}@{}:~/{}/output.csv ./"\
         " >/dev/null".format(KEY_LOCATION, USERNAME, CLIENT["name"], ARTIFACT_PATH)
 execute_local(cmd)
 # Add the header to the raw output CSV file
-header = "num_clients,offered_load,throughput,cpu_bound_req_throughput,mem_bound_req_throughput,goodput,cpu_bound_req_goodput,mem_bound_req_goodput,cpu,membw,power"\
-         ",min,mean,p50,cpu_bound_req_p50,mem_bound_req_p50,p90,cpu_bound_req_p90,mem_bound_req_p90,p99"\
-         ",cpu_bound_req_p99,mem_bound_req_p99,p999,p9999,max,reject_min,reject_mean,reject_p50,reject_p99"\
+header = "num_clients,offered_load,throughput,cpu_bound_req_throughput,mem_bound_req_throughput,lock_bound_req_throughput"\
+         ",goodput,cpu_bound_req_goodput,mem_bound_req_goodput,lock_bound_req_goodput,cpu,membw,power"\
+         ",min,mean,p50,cpu_bound_req_p50,mem_bound_req_p50,lock_bound_req_p50"\
+         ",p90,cpu_bound_req_p90,mem_bound_req_p90,lock_bound_req_p90,p99"\
+         ",cpu_bound_req_p99,mem_bound_req_p99,lock_bound_req_p99,p999,p9999,max,reject_min,reject_mean,reject_p50,reject_p99"\
          ",p1_credit,mean_credit,p99_credit,p1_q,mean_q,p99_q,mean_stime,p99_stime,server:rx_pps"\
          ",server:tx_pps,server:rx_bps,server:tx_bps,server:rx_drops_pps,server:rx_ooo_pps"\
          ",server:cupdate_rx_pps,server:ecredit_tx_pps,server:credit_tx_pps,server:req_rx_pps"\
@@ -398,7 +401,8 @@ run_config += "RTT: {} us\n".format(NET_RTT)
 run_config += "SLO: {} us\n".format(SLO)
 run_config += "CPU-bound workload per-request iterations: {}\n".format(CPU_BOUND_WORK_ITR)
 run_config += "Memory-bound workload per-request iterations: {}\n".format(MEM_BOUND_WORK_ITR)
-run_config += "CPU-bound request percentage: {}\n".format(CPU_BOUND_REQ_PCNT)
+run_config += "Lock-bound workload per-request iterations: {}\n".format(LOCK_BOUND_WORK_ITR)
+run_config += "Request mix: {}\n".format(REQ_MIX)
 cmd = "echo \"{}\" > {}/run.config".format(run_config, output_dir)
 execute_local(cmd)
 
