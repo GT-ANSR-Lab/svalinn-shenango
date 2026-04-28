@@ -128,7 +128,7 @@ static SyntheticWorker *cpu_bound_workers[NCPU];
 static SyntheticWorker *mem_bound_workers[NCPU];
 static SyntheticWorker *lock_bound_workers[NCPU];
 static MemSemaphore *msem = nullptr;
-static mutex_t mut;
+static cong_aware_mutex_t mut;
 
 struct payload {
   uint64_t req_type;
@@ -599,9 +599,9 @@ void RpcServer(struct srpc_ctx *ctx) {
       }
     }
   } else if (in->req_type == LOCK_BOUND) {
-	  if (mutex_lock_if_uncongested(&mut)) {
+	  if (cong_aware_mutex_lock_if_uncongested(&mut)) {
         lock_bound_workers[core_id]->Work(workn);
-		mutex_unlock(&mut);
+		cong_aware_mutex_unlock(&mut);
 	  } else {
         ctx->drop = true;
         return;
@@ -714,7 +714,7 @@ void ServerHandler(void *arg) {
   }
 
   // Initialize the lock object
-  mutex_init(&mut);
+  cong_aware_mutex_init(&mut, CONG_AWARE_MUTEX_POLICY_QLEN);
 
   int ret = rpc::RpcServerEnable(RpcServer);
   if (ret) panic("couldn't enable RPC server");
