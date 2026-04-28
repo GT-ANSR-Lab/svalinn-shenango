@@ -7,17 +7,29 @@
 /*
  * Parameters used in Svalinn evaluation (on xl170)
  *
- * Netbench
- * #define SBW_LATENCY_BUDGET			250
+ * Netbench (cpu+mem+lock)
+ * #define SBW_LATENCY_BUDGET			200
+ * #define SRPC_CM_SLOPE_THRESH		    0.1
+ * #define SRPC_CM_SLOPE_INV		    10
+ * #define SRPC_CM_UPDATE_INTERVAL		400
+ * #define SRPC_CM_P99_RTT			    200
  *
  * RocksDB
  * #define SBW_LATENCY_BUDGET			200
+ * #define SRPC_CM_SLOPE_THRESH		    0.2
+ * #define SRPC_CM_SLOPE_INV		    4
+ * #define SRPC_CM_UPDATE_INTERVAL		200
+ * #define SRPC_CM_P99_RTT			    100
  *
  * Dataframe
  * #define SBW_LATENCY_BUDGET			3120
  *
  * Memcached
  * #define SBW_LATENCY_BUDGET			200
+ * #define SRPC_CM_SLOPE_THRESH		    0.2
+ * #define SRPC_CM_SLOPE_INV		    4
+ * #define SRPC_CM_UPDATE_INTERVAL		200
+ * #define SRPC_CM_P99_RTT			    100
  *
  */
 
@@ -25,11 +37,11 @@
 /* delay threshold for AQM */
 #define SBW_LATENCY_BUDGET			200
 
-#define SRPC_CM_SLOPE_THRESH		0.2
-#define SRPC_CM_SLOPE_INV		4
+#define SRPC_CM_SLOPE_THRESH		0.1
+#define SRPC_CM_SLOPE_INV		10
 
-#define SRPC_CM_UPDATE_INTERVAL		200
-#define SRPC_CM_P99_RTT			100
+#define SRPC_CM_UPDATE_INTERVAL		400
+#define SRPC_CM_P99_RTT			200
 
 /* round trip time in us */
 #define SBW_RTT_US			10

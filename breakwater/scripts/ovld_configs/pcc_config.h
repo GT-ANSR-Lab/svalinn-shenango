@@ -11,10 +11,13 @@
 /*
  * Parameters used in Svalinn evaluation (on xl170)
  *
- * Netbench
- * #define SPCC_QDELAY_BUDGET          250
- * #define SPCC_PRE_MI_US              (300)
- * #define SPCC_MI_US                  (700)
+ * Netbench (cpu+mem+lock)
+ * #define SPCC_QDELAY_BUDGET          200
+ * #define SPCC_PRE_MI_US              (200)
+ * #define SPCC_MI_US                  (400)
+ * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
+ * calc_util_fn = tput
+ * comp_util_fn = simple
  *
  * RocksDB
  * #define SPCC_QDELAY_BUDGET          200
@@ -47,10 +50,10 @@
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (300)
+#define SPCC_PRE_MI_US              (200)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (1000)
+#define SPCC_MI_US                  (400)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -204,8 +207,8 @@ static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
-    /* return spcc_comp_util_fn_simple(minus_stats, plus_stats); */
-    return spcc_comp_util_fn_deadband(minus_stats, plus_stats);
+    return spcc_comp_util_fn_simple(minus_stats, plus_stats);
+    /* return spcc_comp_util_fn_deadband(minus_stats, plus_stats); */
     /* return spcc_comp_util_fn_protego(minus_stats, plus_stats); */
 }
 

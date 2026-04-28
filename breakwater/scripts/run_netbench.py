@@ -34,27 +34,32 @@ MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
 
 # Total number of client connections
-NUM_CONNS = 99
+NUM_CONNS = 100
 # Total number of client machines (master and agents)
 NUM_CLIENTS = len(CLIENTS)
 # Total number of agents
 NUM_AGENTS = len(AGENTS)
 
 # List of offered load
-NUM_SAMPLES = 1
-MAX_OFFERED_LOAD = 1000000
+NUM_SAMPLES = 30
+MAX_OFFERED_LOAD = 1300000
 OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_SAMPLES)]
 LOAD_SHIFT = False
 if LOAD_SHIFT:
     OFFERED_LOADS = [0]  # Dummy value
-
 
 # Network RTT on the testbed
 NET_RTT = 10
 SLO = 500
 
 # Netbench settings
-CPU_BOUND_WORK_ITR = 5000
+# Netbench (cpu+mem)
+# CPU_BOUND_WORK_ITR = 5000
+# MEM_BOUND_WORK_ITR = 25
+# LOCK_BOUND_WORK_ITR = 5000
+# REQ_MIX = "cpu:50,mem:50,lock:0"
+# Netbench (cpu+mem+lock)
+CPU_BOUND_WORK_ITR = 7500
 MEM_BOUND_WORK_ITR = 25
 LOCK_BOUND_WORK_ITR = 5000
 REQ_MIX = "cpu:25,mem:25,lock:50"
