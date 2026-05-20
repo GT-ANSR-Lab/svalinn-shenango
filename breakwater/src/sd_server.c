@@ -20,6 +20,7 @@
 
 #include "util.h"
 #include "sd_proto.h"
+#include "bw2_config.h"
 
 /* the maximum supported window size */
 #define SSD_MAX_WINDOW_EXP	6
@@ -215,7 +216,7 @@ static void srpc_worker(void *arg)
 
 	set_rpc_ctx((void *)&c->cmn);
 	set_acc_qdel(runtime_queue_us() * cycles_per_us);
-	c->cmn.drop = false;
+	c->cmn.drop = (get_acc_qdel_us() > SBW_LATENCY_BUDGET);
 
 	if (!c->cmn.drop) {
 		srpc_handler((struct srpc_ctx *)c);
