@@ -927,7 +927,7 @@ std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
 	if (req_type == CPU_BOUND) {
 		work_itr = cpu_bound_work_itr;
 	} else if (req_type == MEM_BOUND) {
-		work_itr = mem_bound_work_itr;
+		work_itr = cur_mem_bound_work_itr;
 	} else if (req_type == LOCK_BOUND) {
 		work_itr = lock_bound_work_itr;
 	} else {
