@@ -55,3 +55,5 @@
 #define SEDA_ADJ_D			1.1
 /* weight on additive increase */
 #define SEDA_CI				-0.1
+/* Maximum tolerable queueing delay before running the request handler */
+#define SEDA_QDELAY_THRESH  200
