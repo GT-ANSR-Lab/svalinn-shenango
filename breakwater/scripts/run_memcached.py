@@ -23,12 +23,12 @@ RUNTIME_DISABLE_WATCHDOG = False
 RUNTIME_PMC_INFO_POLL_INTERVAL = 0
 
 # Overload controller settings
-OVERLOAD_ALG = "protego"
+OVERLOAD_ALG = "pcc"
 
 # Memory semaphore settings
-MSEM_ENABLE = False
+MSEM_ENABLE = True
 MSEM_CTL_DELAY_US = 500
-MSEM_ALPHA = 0.6
+MSEM_ALPHA = 0.7
 MSEM_TARGET_NORM_MEMBW = 1.0
 MSEM_EXPLR_PROB = 0.3
 MSEM_REWARD_EWMA_WEIGHT = 0.8
@@ -47,7 +47,7 @@ OFFERED_LOADS = [int((i+1) * (MAX_OFFERED_LOAD/NUM_SAMPLES)) for i in range(NUM_
 
 # Network RTT on the testbed
 NET_RTT = 10
-SLO = 1000
+SLO = 1375
 
 # Memcached settings
 MC_MAX_ITEM_SIZE = 1024*1024*2
@@ -57,7 +57,7 @@ MC_SKEY_COUNT = 100000
 MC_LO_LKEY_SIZE = 800000
 MC_HI_LKEY_SIZE = 1200000
 MC_LKEY_COUNT = 5000
-MC_SKEY_PCNT = 72
+MC_SKEY_PCNT = 50
 MC_WORKLOAD = "BIMOD_VAR"
 
 # Provides the opportunity to replace the files in all the machines

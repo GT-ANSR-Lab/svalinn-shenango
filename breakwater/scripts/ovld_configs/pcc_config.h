@@ -15,27 +15,38 @@
  * #define SPCC_QDELAY_BUDGET          200
  * #define SPCC_PRE_MI_US              (200)
  * #define SPCC_MI_US                  (400)
+ * #define SPCC_EPSILON                (1)
+ * #define SPCC_MICRO_EXP_STRICT_LABELLING    (0)
  * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
  * calc_util_fn = tput
- * comp_util_fn = simple
+ * comp_util_fn = deadband (10%)
  *
  * RocksDB
  * #define SPCC_QDELAY_BUDGET          200
  * #define SPCC_PRE_MI_US              (100)
  * #define SPCC_MI_US                  (200)
+ * #define SPCC_EPSILON                (1)
+ * #define SPCC_MICRO_EXP_STRICT_LABELLING    (0)
  * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
  * calc_util_fn = tput
  * comp_util_fn = deadband (10%)
  *
  * Dataframe
- * #define SPCC_QDELAY_BUDGET          3120
- * #define SPCC_PRE_MI_US              (100)
- * #define SPCC_MI_US                  (200)
+ * #define SPCC_QDELAY_BUDGET          2200
+ * #define SPCC_PRE_MI_US              (500)
+ * #define SPCC_MI_US                  (1000)
+ * #define SPCC_EPSILON                (1)
+ * #define SPCC_MICRO_EXP_STRICT_LABELLING    (0)
+ * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
+ * calc_util_fn = tput
+ * comp_util_fn = deadband (10%)
  *
  * Memcached
  * #define SPCC_QDELAY_BUDGET          200
- * #define SPCC_PRE_MI_US              (300)
- * #define SPCC_MI_US                  (1000)
+ * #define SPCC_PRE_MI_US              (100)
+ * #define SPCC_MI_US                  (200)
+ * #define SPCC_EPSILON                (1)
+ * #define SPCC_MICRO_EXP_STRICT_LABELLING    (0)
  * #define SPCC_MICRO_EXP_PERTURB_CB   (0)
  * calc_util_fn = tput
  * comp_util_fn = deadband (10%)
@@ -44,16 +55,16 @@
 
 
 /* AQM drop threshold */
-#define SPCC_QDELAY_BUDGET            200
+#define SPCC_QDELAY_BUDGET            440
 
 /* Round trip time in us */
 #define SPCC_RTT_US                   10
 
 /* Duration to wait before starting the monitoring of a microexperiment */
-#define SPCC_PRE_MI_US              (200)
+#define SPCC_PRE_MI_US              (100)
 
 /* Monitor interval duration in microseconds. */
-#define SPCC_MI_US                  (400)
+#define SPCC_MI_US                  (200)
 
 /* Credit pool change granularity */
 #define SPCC_EPSILON                (1)
@@ -177,7 +188,7 @@ static inline enum spcc_dir spcc_comp_util_fn_deadband(
     double util_diff = fabs(plus_stats->utility - minus_stats->utility);
     double util_diff_pcnt = util_diff / minus_stats->utility;
 
-    if (util_diff_pcnt < 0.1) {
+    if (util_diff_pcnt < 0.05) {
         return SPCC_DIR_STAY;
     }
 
@@ -207,8 +218,8 @@ static inline enum spcc_dir spcc_comp_util_fn(
     struct spcc_micro_exp_stats *minus_stats,
     struct spcc_micro_exp_stats *plus_stats) {
 
-    return spcc_comp_util_fn_simple(minus_stats, plus_stats);
-    /* return spcc_comp_util_fn_deadband(minus_stats, plus_stats); */
+    /* return spcc_comp_util_fn_simple(minus_stats, plus_stats); */
+    return spcc_comp_util_fn_deadband(minus_stats, plus_stats);
     /* return spcc_comp_util_fn_protego(minus_stats, plus_stats); */
 }
 

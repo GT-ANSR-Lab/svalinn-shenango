@@ -17,21 +17,23 @@
  * RocksDB
  * #define SEDA_TARGET			1250
  * #define SEDA_TIMEOUT			2000
- * #define SEDA_ADJ_I			2.0
+ * #define SEDA_ADJ_I			5.0
  * #define SEDA_ADJ_D			1.3
  * #define SEDA_QDELAY_THRESH   200
  *
  * Dataframe
- * #define SEDA_TARGET			4240
- * #define SEDA_TIMEOUT			5000
- * #define SEDA_QDELAY_THRESH   200
+ * #define SEDA_TARGET			3750
+ * #define SEDA_TIMEOUT			7000
+ * #define SEDA_ADJ_I			12.0
+ * #define SEDA_ADJ_D			1.1
+ * #define SEDA_QDELAY_THRESH   2200
  *
  * Memcached
- * #define SEDA_TARGET			1000
- * #define SEDA_TIMEOUT			1500
- * #define SEDA_ADJ_I			2.0
+ * #define SEDA_TARGET			1375
+ * #define SEDA_TIMEOUT			2000
+ * #define SEDA_ADJ_I			5.0
  * #define SEDA_ADJ_D			1.3
- * #define SEDA_QDELAY_THRESH   200
+ * #define SEDA_QDELAY_THRESH   440
  *
  */
 
