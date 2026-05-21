@@ -156,11 +156,15 @@ bool cong_aware_mutex_is_congested(cong_aware_mutex_t *cam) {
         /* If pcc */
 		latency_budget = SPCC_QDELAY_BUDGET;
     } else {
+		/* Other overload controllers do not support these mutexes */
 		return false;
 	}
 
 	/* Get an estimate of the wait time */
-	if (cam->pol == CONG_AWARE_MUTEX_POLICY_QDELAY) {
+	if (cam->pol == CONG_AWARE_MUTEX_POLICY_NONE) {
+		/* No policy, behave similar to a vanilla mutex */
+		return false;
+	} else if (cam->pol == CONG_AWARE_MUTEX_POLICY_QDELAY) {
 		est_wait_time = mutex_queue_us(&cam->m);
 	} else if (cam->pol == CONG_AWARE_MUTEX_POLICY_QLEN) {
 		est_wait_time = atomic_read(&cam->hold_time) * atomic_read(&cam->num_th);

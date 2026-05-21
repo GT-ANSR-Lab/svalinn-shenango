@@ -28,7 +28,8 @@ bool condvar_is_congested(condvar_t *cv);
 
 typedef enum cong_aware_mutex_policy {
 
-	CONG_AWARE_MUTEX_POLICY_QDELAY = 0,
+	CONG_AWARE_MUTEX_POLICY_NONE = 0,
+	CONG_AWARE_MUTEX_POLICY_QDELAY,
 	CONG_AWARE_MUTEX_POLICY_QLEN,
 
 } cong_aware_mutex_policy_t;
