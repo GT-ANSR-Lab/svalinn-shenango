@@ -254,11 +254,20 @@ struct work_unit {
   uint64_t sent_to;
 };
 
+struct retransmit_entry {
+    payload p;
+    int next_server;
+    uint64_t idx;
+    uint64_t hash;
+};
+
 struct drop_arg {
     void *w;
     void *clients;
     int thread_num;
     int num_servers;
+    rt::Spin retransmit_lock;
+    std::vector<retransmit_entry> retransmit_queue;
 };
 
 class NetBarrier {
@@ -966,6 +975,32 @@ std::vector<work_unit> ClientWorker(
   payload p;
   auto wsize = w.size();
 
+  // Dedicated retransmit thread: drains the queue immediately without waiting
+  // for the next scheduled send, so retransmissions aren't delayed by
+  // inter-arrival gaps at low load.
+  std::atomic<bool> retransmit_done{false};
+  rt::Thread retransmit_th([&] {
+    while (!retransmit_done.load(std::memory_order_relaxed)) {
+      std::vector<retransmit_entry> pending;
+      darg.retransmit_lock.Lock();
+      pending.swap(darg.retransmit_queue);
+      darg.retransmit_lock.Unlock();
+
+      if (pending.empty()) {
+        rt::Sleep(1);
+        continue;
+      }
+
+      for (auto &entry : pending) {
+        w[entry.idx].timings[entry.next_server] = microtime();
+        ssize_t ret = conns[entry.next_server]->Send(
+            &entry.p, sizeof(entry.p), entry.hash, (void *)&darg);
+        if (ret != -ENOBUFS && ret != static_cast<ssize_t>(sizeof(entry.p)))
+          panic("retransmit failed, ret = %ld", ret);
+      }
+    }
+  });
+
   for (unsigned int i = 0; i < wsize; ++i) {
     barrier();
     auto now = steady_clock::now();
@@ -1001,6 +1036,8 @@ std::vector<work_unit> ClientWorker(
   }
 
   rt::Sleep((int)(kRTT + 2));
+  retransmit_done.store(true, std::memory_order_relaxed);
+  retransmit_th.Join();
   for (int i = 0; i < num_servers; ++i) {
     BUG_ON(conns[i]->Shutdown(SHUT_RDWR));
   }
@@ -1011,6 +1048,7 @@ std::vector<work_unit> ClientWorker(
   return w;
 }
 
+#if 0
 void ClientLocalDropHandler(struct crpc_ctx *c) {
   payload *req = reinterpret_cast<payload *>(c->buf);
   uint64_t idx = ntoh64(req->index);
@@ -1020,6 +1058,7 @@ void ClientLocalDropHandler(struct crpc_ctx *c) {
   w[idx].duration_us = 0;
   w[idx].success = false;
 }
+#endif
 
 #if 0
 void ClientRemoteDropHandler(void *buf, size_t len, void *arg) {
@@ -1047,28 +1086,49 @@ std::vector<work_unit> RunExperiment(
       for (int j = 0; j < num_servers; ++j) {
           struct rpc_session_info info = {.session_type = 0};
           std::unique_ptr<rpc::RpcClient> outc(rpc::RpcClient::Dial(raddr[j], i * num_servers + j,
-                                                                    ClientLocalDropHandler, // XXX: Do we need to update this too?
+																	[](struct crpc_ctx *ctx) {
+																		payload *req = reinterpret_cast<payload *>(ctx->buf);
+																		uint64_t idx = ntoh64(req->index);
+																		drop_arg *darg = reinterpret_cast<drop_arg *>(ctx->arg);
+																		work_unit *w = (work_unit *)darg->w;
+
+																		w[idx].duration_us = 0;
+																		w[idx].success = false;
+																		w[idx].failure_notify_delay[w[idx].sent_to] = 0;
+
+																		if (w[idx].sent_to != (darg->num_servers - 1)) {
+																			w[idx].sent_to++;
+																			retransmit_entry entry;
+																			memcpy(&entry.p, req, sizeof(payload));
+																			entry.next_server = w[idx].sent_to;
+																			entry.idx = idx;
+																			entry.hash = w[idx].hash;
+																			darg->retransmit_lock.Lock();
+																			darg->retransmit_queue.push_back(entry);
+																			darg->retransmit_lock.Unlock();
+																		}
+																	},
                                                                     [](void *buf, size_t len, void *arg) {
                                                                         assert(len == sizeof(payload));
                                                                         payload *req = (payload *)buf;
                                                                         uint64_t idx = ntoh64(req->index);
                                                                         drop_arg *darg = reinterpret_cast<drop_arg *>(arg);
                                                                         work_unit *w = (work_unit *)darg->w;
-                                                                        std::vector<std::unique_ptr<rpc::RpcClient>> *c = (std::vector<std::unique_ptr<rpc::RpcClient> >*)darg->clients;
 
-                                                                        // Mark the failure notification delay for this server replica
                                                                         w[idx].duration_us = microtime() - w[idx].timing;
                                                                         w[idx].success = false;
                                                                         w[idx].failure_notify_delay[w[idx].sent_to] = microtime() - w[idx].timings[w[idx].sent_to];
 
-                                                                        // If the request was not dropped at the last server
                                                                         if (w[idx].sent_to != (darg->num_servers - 1)) {
-                                                                            // Then retry at the next server
                                                                             w[idx].sent_to++;
-                                                                            w[idx].timings[w[idx].sent_to] = microtime();
-                                                                            ssize_t ret = c[darg->thread_num][w[idx].sent_to]->Send(req, sizeof(*req), w[idx].hash, arg);
-                                                                            if (ret != static_cast<ssize_t>(sizeof(*req)))
-                                                                                panic("write failed, ret = %ld", ret);
+                                                                            retransmit_entry entry;
+                                                                            memcpy(&entry.p, req, sizeof(payload));
+                                                                            entry.next_server = w[idx].sent_to;
+                                                                            entry.idx = idx;
+                                                                            entry.hash = w[idx].hash;
+                                                                            darg->retransmit_lock.Lock();
+                                                                            darg->retransmit_queue.push_back(entry);
+                                                                            darg->retransmit_lock.Unlock();
                                                                         }
                                                                     },
                                                                     &info));
