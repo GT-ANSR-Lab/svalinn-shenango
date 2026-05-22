@@ -61,6 +61,7 @@ CPU_BOUND_WORK_ITR = 7500
 MEM_BOUND_WORK_ITR = 25
 LOCK_BOUND_WORK_ITR = 5000
 REQ_MIX = "cpu:70,mem:30,lock:0"
+TEST_DURATION = 8000000  # Experiment duration in microseconds
 
 # Provides the opportunity to replace the files in all the machines
 # Helps in testing quickly by updating the required files
@@ -300,11 +301,12 @@ for offered_load in OFFERED_LOADS:
     print("\tExecuting netbench client...")
     client_agent_sessions = []
     cmd = "cd ~/{} && sudo ./breakwater/apps/netbench/build/netbench_ms {} client.config client"\
-          " {} {} {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
+          " {} {} {} {} {} {} {} {} {} {} {} >stdout.out 2>&1"\
           .format(ARTIFACT_PATH, OVERLOAD_ALG, NUM_CONNS,
                   CPU_BOUND_WORK_ITR, MEM_BOUND_WORK_ITR, LOCK_BOUND_WORK_ITR, REQ_MIX,
                   SLO, NUM_AGENTS, offered_load,
-                  "load_shift" if LOAD_SHIFT else "no_load_shift", server_ips_arg)
+                  "load_shift" if LOAD_SHIFT else "no_load_shift",
+                  TEST_DURATION, server_ips_arg)
     client_agent_sessions += execute_remote([client_conn], cmd, False)
     sleep(3)
 
@@ -428,6 +430,7 @@ run_config += "CPU-bound workload per-request iterations: {}\n".format(CPU_BOUND
 run_config += "Memory-bound workload per-request iterations: {}\n".format(MEM_BOUND_WORK_ITR)
 run_config += "Lock-bound workload per-request iterations: {}\n".format(LOCK_BOUND_WORK_ITR)
 run_config += "Request mix: {}\n".format(REQ_MIX)
+run_config += "Test duration: {} us\n".format(TEST_DURATION)
 cmd = "echo \"{}\" > {}/run.config".format(run_config, output_dir)
 execute_local(cmd)
 
