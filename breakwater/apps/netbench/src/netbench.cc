@@ -102,25 +102,40 @@ int do_load_shift = 0;
 struct load_shift_test {
   double rate;
   uint64_t duration;
+  uint64_t cpu_bound_work_itr;
   uint64_t mem_bound_work_itr;
+  uint64_t lock_bound_work_itr;
+  double req_mix[NUM_REQUEST_TYPES];
 };
 
 std::vector<load_shift_test> load_shift_tests = {
   // This is for warmup
-  {.rate = 1000000,
+  {.rate = 200000,
    .duration = kWarmUpTime,
-   .mem_bound_work_itr = 25},
+   .cpu_bound_work_itr = 7500,
+   .mem_bound_work_itr = 25,
+   .lock_bound_work_itr = 5000,
+   .req_mix = {70.0, 30.0, 0.0}},
 
   // Actual rates, we want to test
-  {.rate = 1000000,
-   .duration = 2000000,
-   .mem_bound_work_itr = 25},
-  {.rate = 1000000,
-   .duration = 2000000,
-   .mem_bound_work_itr = 500},
-  {.rate = 1000000,
-   .duration = 2000000,
-   .mem_bound_work_itr = 25},
+  {.rate = 200000,
+   .duration = 1000000,
+   .cpu_bound_work_itr = 7500,
+   .mem_bound_work_itr = 25,
+   .lock_bound_work_itr = 5000,
+   .req_mix = {70.0, 30.0, 0.0}},
+  {.rate = 233333,
+   .duration = 1000000,
+   .cpu_bound_work_itr = 7500,
+   .mem_bound_work_itr = 25,
+   .lock_bound_work_itr = 5000,
+   .req_mix = {60.0, 40.0, 0.0}},
+  {.rate = 200000,
+   .duration = 1000000,
+   .cpu_bound_work_itr = 7500,
+   .mem_bound_work_itr = 25,
+   .lock_bound_work_itr = 5000,
+   .req_mix = {70.0, 30.0, 0.0}},
  };
 
 
@@ -905,7 +920,10 @@ void SEQHandler(void *arg) {
 template <class Arrival>
 std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
                                     double last_us, bool is_monster,
-                                    uint64_t cur_mem_bound_work_itr) {
+                                    uint64_t cur_cpu_bound_work_itr,
+                                    uint64_t cur_mem_bound_work_itr,
+                                    uint64_t cur_lock_bound_work_itr,
+									double *cur_req_mix) {
   std::vector<work_unit> w;
   uint64_t req_type;
   uint64_t work_itr;
@@ -917,7 +935,7 @@ std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
 	// Generate an operation randomly
 	double sample = ((double)rand() / (double)RAND_MAX) * 100.0;
 	for (req_type = 0; req_type < NUM_REQUEST_TYPES; req_type++) {
-		sample -= req_mix[req_type];
+		sample -= cur_req_mix[req_type];
 		if (sample < 0) {
 			break;
 		}
@@ -925,11 +943,11 @@ std::vector<work_unit> GenerateWork(Arrival a, double cur_us,
 	assert(req_type < NUM_REQUEST_TYPES);
 
 	if (req_type == CPU_BOUND) {
-		work_itr = cpu_bound_work_itr;
+		work_itr = cur_cpu_bound_work_itr;
 	} else if (req_type == MEM_BOUND) {
 		work_itr = cur_mem_bound_work_itr;
 	} else if (req_type == LOCK_BOUND) {
-		work_itr = lock_bound_work_itr;
+		work_itr = cur_lock_bound_work_itr;
 	} else {
 		assert(false);
 	}
@@ -1685,7 +1703,10 @@ void LoadShiftExperiment(int threads) {
           1.0 / (1000000.0 / (rate / static_cast<double>(threads))));
       auto work = GenerateWork(std::bind(rd, rg), last_us,
                                last_us + test.duration, false,
-                               test.mem_bound_work_itr);
+                               test.cpu_bound_work_itr,
+                               test.mem_bound_work_itr,
+                               test.lock_bound_work_itr,
+							   &test.req_mix[0]);
       last_us = work.back().start_us;
       w_temp.insert(w_temp.end(), work.begin(), work.end());
     }
@@ -1701,7 +1722,10 @@ void LoadShiftExperiment(int threads) {
           1.0 / (1000000.0 / (rate / static_cast<double>(threads))));
       auto work = GenerateWork(std::bind(rd, rg), last_us,
                                last_us + test.duration, true,
-                               test.mem_bound_work_itr);
+                               test.cpu_bound_work_itr,
+                               test.mem_bound_work_itr,
+                               test.lock_bound_work_itr,
+							   &test.req_mix[0]);
       last_us = work.back().start_us;
       w_temp.insert(w_temp.end(), work.begin(), work.end());
     }
@@ -1748,14 +1772,20 @@ void SteadyStateExperiment(int threads, double offered_rps) {
     std::exponential_distribution<double> rd(
         1.0 / (1000000.0 / (offered_rps / static_cast<double>(threads))));
     return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, false,
-        mem_bound_work_itr);
+						cpu_bound_work_itr,
+						mem_bound_work_itr,
+						lock_bound_work_itr,
+						&req_mix[0]);
   },
   [=] {
     std::mt19937 rg(rand());
     std::exponential_distribution<double> rd(
         1.0 / (1000000.0 / (offered_rps / static_cast<double>(threads))));
     return GenerateWork(std::bind(rd, rg), 0, kExperimentTime, true,
-        mem_bound_work_itr);
+						cpu_bound_work_itr,
+						mem_bound_work_itr,
+						lock_bound_work_itr,
+						&req_mix[0]);
   });
 
   if (b) {
