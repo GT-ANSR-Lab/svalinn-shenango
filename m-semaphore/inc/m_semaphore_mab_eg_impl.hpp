@@ -62,6 +62,7 @@ private:
     // List of threads waiting to acquire the semaphore.
     struct list_head m_waiters;
     uint64_t         m_num_waiters;
+    uint64_t         m_oldest_tsc;
 
 #ifdef M_SEM_DEBUG
     // Average capacity.

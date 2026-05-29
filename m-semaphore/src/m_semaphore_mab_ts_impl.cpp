@@ -58,6 +58,7 @@ MemSemaphoreMabTsImpl::MemSemaphoreMabTsImpl(uint32_t init_cap) {
     // Initialize the waiter state
     list_head_init(&m_waiters);
     m_num_waiters = 0;
+    m_oldest_tsc = UINT64_MAX;
 
 #ifdef M_SEM_DEBUG
     m_avg_count = 0;
@@ -261,6 +262,14 @@ void MemSemaphoreMabTsImpl::Wait() {
         // Update semaphore state
         ++m_count;
         --m_num_waiters;
+
+        // Update the oldest threads enqueue time
+        if (list_empty(&m_waiters)) {
+            m_oldest_tsc = UINT64_MAX;
+        } else {
+            WaiterThread *oldestth = list_top(&m_waiters, WaiterThread, link);
+            m_oldest_tsc = oldestth->enque_tsc;
+        }
     }
 
     // If capacity is stil available to serve the current thread
@@ -275,16 +284,24 @@ void MemSemaphoreMabTsImpl::Wait() {
     WaiterThread myth;
     myth.th = thread_self();
     myth.enque_tsc = rdtsc();
+    bool is_first = list_empty(&m_waiters);
     list_add_tail(&m_waiters, &myth.link);
     ++m_num_waiters;
+    if (is_first) {
+        m_oldest_tsc = myth.enque_tsc;
+    }
     m_spin.UnlockAndPark();
 }
 
 
 uint64_t MemSemaphoreMabTsImpl::QueueDelayTsc() {
 
-    // XXX: Not implemented
-    return 0;
+    uint64_t cur_tsc = rdtsc();
+    if (cur_tsc < m_oldest_tsc) {
+        return 0;
+    }
+
+    return (cur_tsc - m_oldest_tsc);
 }
 
 
@@ -313,6 +330,14 @@ void MemSemaphoreMabTsImpl::Post() {
         thread_ready(waketh->th);
 
         --m_num_waiters;
+
+        // Update the oldest threads enqueue time
+        if (list_empty(&m_waiters)) {
+            m_oldest_tsc = UINT64_MAX;
+        } else {
+            WaiterThread *oldestth = list_top(&m_waiters, WaiterThread, link);
+            m_oldest_tsc = oldestth->enque_tsc;
+        }
     }
 
     m_spin.Unlock();
