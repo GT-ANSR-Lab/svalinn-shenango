@@ -38,6 +38,7 @@ extern "C" {
 #include <utility>
 #include <vector>
 
+
 #include <ctime>
 std::time_t timex;
 
@@ -110,7 +111,7 @@ struct load_shift_test {
 
 std::vector<load_shift_test> load_shift_tests = {
   // This is for warmup
-  {.rate = 200000,
+  {.rate = 166666,
    .duration = kWarmUpTime,
    .cpu_bound_work_itr = 7500,
    .mem_bound_work_itr = 25,
@@ -118,19 +119,19 @@ std::vector<load_shift_test> load_shift_tests = {
    .req_mix = {70.0, 30.0, 0.0}},
 
   // Actual rates, we want to test
-  {.rate = 200000,
+  {.rate = 166666,
    .duration = 1000000,
    .cpu_bound_work_itr = 7500,
    .mem_bound_work_itr = 25,
    .lock_bound_work_itr = 5000,
    .req_mix = {70.0, 30.0, 0.0}},
-  {.rate = 233333,
+  {.rate = 195000,
    .duration = 1000000,
    .cpu_bound_work_itr = 7500,
    .mem_bound_work_itr = 25,
    .lock_bound_work_itr = 5000,
    .req_mix = {60.0, 40.0, 0.0}},
-  {.rate = 200000,
+  {.rate = 166666,
    .duration = 1000000,
    .cpu_bound_work_itr = 7500,
    .mem_bound_work_itr = 25,
@@ -1403,6 +1404,30 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
     return;
   }
 
+  // Save the work units in a file
+  // Should be done here to include requests dropped at the server
+  if (do_load_shift) {
+    std::sort(w.begin(), w.end(), [](const work_unit &s1, const work_unit &s2) {
+      return s1.start_us < s2.start_us; // is this correct, or should it be start+duration??
+    });
+    std::ofstream all_tasks_file;
+    all_tasks_file.open ("all_tasks.csv");
+    all_tasks_file << "start_us,req_type,work_us,msem_cap,duration_us,tsc,server_queue,server_time,success" << std::endl;
+    all_tasks_file << std::setprecision(8) << std::fixed;
+    for (unsigned int i = 0; i < w.size(); ++i) {
+      all_tasks_file << w[i].start_us << ","
+                     << w[i].req_type << ","
+                     << w[i].work_us << ","
+                     << w[i].msem_cap << ","
+                     << w[i].duration_us << ","
+                     << w[i].tsc << ","
+                     << w[i].server_queue << ","
+                     << w[i].server_time << ","
+					 << (int)w[i].success << std::endl;
+    }
+    all_tasks_file.close();
+  }
+
   std::vector<work_unit> rejected;
 
   std::copy_if(w.begin(), w.end(), std::back_inserter(rejected), [](work_unit &s) {
@@ -1542,28 +1567,6 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs,
       [](double s, const work_unit &c) { return s + c.server_time; });
   double mean_stime = sum_stime / w.size();
   double p99_stime = w[count * 0.99].server_time;
-
-  // Save the work units in a file
-  if (do_load_shift) {
-    std::sort(w.begin(), w.end(), [](const work_unit &s1, const work_unit &s2) {
-      return s1.start_us < s2.start_us; // is this correct, or should it be start+duration??
-    });
-    std::ofstream all_tasks_file;
-    all_tasks_file.open ("all_tasks.csv");
-    all_tasks_file << "start_us,req_type,work_us,msem_cap,duration_us,tsc,server_queue,server_time" << std::endl;
-    all_tasks_file << std::setprecision(8) << std::fixed;
-    for (unsigned int i = 0; i < w.size(); ++i) {
-      all_tasks_file << w[i].start_us << ","
-                     << w[i].req_type << ","
-                     << w[i].work_us << ","
-                     << w[i].msem_cap << ","
-                     << w[i].duration_us << ","
-                     << w[i].tsc << ","
-                     << w[i].server_queue << ","
-                     << w[i].server_time << std::endl;
-    }
-    all_tasks_file.close();
-  }
 
   std::cout << std::setprecision(4) << std::fixed << threads * total_agents << ","
 	    << cs->offered_rps << "," << cs->rps << ","
