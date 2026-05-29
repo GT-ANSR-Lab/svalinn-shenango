@@ -17,6 +17,7 @@ extern "C" {
 #include "cc/thread.h"
 #include "cc/timer.h"
 #include "breakwater/rpc++.h"
+#include "breakwater/msem++.h"
 
 #include "synthetic_worker.h"
 #include "loadbalancer.h"
@@ -94,6 +95,8 @@ constexpr uint64_t kExperimentTime = 8000000;
 // RTT
 constexpr uint64_t kRTT = 10;
 constexpr uint64_t kNumDupClient = 32;
+// Use blocking msemaphore
+const bool use_blocking_msem = false;
 
 std::vector<double> offered_loads;
 double offered_load;
@@ -143,7 +146,7 @@ std::vector<load_shift_test> load_shift_tests = {
 static SyntheticWorker *cpu_bound_workers[NCPU];
 static SyntheticWorker *mem_bound_workers[NCPU];
 static SyntheticWorker *lock_bound_workers[NCPU];
-static MemSemaphore *msem = nullptr;
+static rpc::RpcMemSemaphore *msem = nullptr;
 static cong_aware_mutex_t mut;
 
 struct payload {
@@ -606,12 +609,24 @@ void RpcServer(struct srpc_ctx *ctx) {
       mem_bound_workers[core_id]->Work(workn);
     } else {
       assert(msem != nullptr);
-      if (msem->TryWait()) {
-        mem_bound_workers[core_id]->Work(workn);
-        msem->Post();
+      if (use_blocking_msem) {
+        // Use a blocking ASQM-version of msemaphore
+        if (msem->WaitIfUncongested()) {
+          mem_bound_workers[core_id]->Work(workn);
+          msem->Post();
+        } else {
+          ctx->drop = true;
+          return;
+        }
       } else {
-        ctx->drop = true;
-        return;
+        // Use a non-blocking version of msemaphore
+        if (msem->TryWait()) {
+          mem_bound_workers[core_id]->Work(workn);
+          msem->Post();
+        } else {
+          ctx->drop = true;
+          return;
+        }
       }
     }
   } else if (in->req_type == LOCK_BOUND) {
@@ -726,7 +741,7 @@ void ServerHandler(void *arg) {
 
   // Create the memory semaphore object
   if (use_msem) {
-      msem = MemSemaphore::GetInstance();
+      msem = rpc::RpcMemSemaphore::GetInstance();
   }
 
   // Initialize the lock object
